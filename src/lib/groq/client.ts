@@ -1,12 +1,13 @@
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 export async function analyzeStatement(
   extractedText: string,
   accountName: string,
   currency: string
 ) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+  const groq = new Groq({ apiKey });
   const prompt = `You are a financial analyst assistant. Analyze the following bank statement text and extract structured financial data.
 
 Return a JSON object with EXACTLY this structure:
