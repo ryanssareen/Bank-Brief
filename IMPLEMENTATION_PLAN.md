@@ -279,7 +279,7 @@ service cloud.firestore {
 ## 6. Authentication & Login Flow
 
 ### Overview
-Firebase Auth with Email + Password only. No social logins in v1.
+Firebase Auth with Email + Password **and Google Sign-In**.
 
 ### Route Protection
 - `/login` and `/register` → accessible only when **NOT** logged in
@@ -291,6 +291,7 @@ Firebase Auth with Email + Password only. No social logins in v1.
 // Functions to implement:
 signUpWithEmail(email: string, password: string, displayName: string): Promise<User>
 signInWithEmail(email: string, password: string): Promise<User>
+signInWithGoogle(): Promise<User>
 signOut(): Promise<void>
 onAuthChange(callback: (user: User | null) => void): Unsubscribe
 resetPassword(email: string): Promise<void>
@@ -304,6 +305,7 @@ resetPassword(email: string): Promise<void>
   loading: boolean
   signIn: (email, password) => Promise<void>
   signUp: (email, password, displayName) => Promise<void>
+  signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
 ```
@@ -322,6 +324,7 @@ Redirect authenticated users from `/login` and `/register` to `/dashboard`.
 5. On error → show toast with error message
 6. "Don't have an account?" link → /register
 7. "Forgot password?" link → trigger resetPassword() → show success toast
+8. "Sign in with Google" button → call signInWithGoogle() → redirect to /dashboard
 ```
 
 ### Register Page Flow (`/register`)
@@ -516,6 +519,8 @@ const text = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
 ### `POST /api/analyze`
 
 **Purpose:** Generate financial insights from extracted statement text using Groq
+
+**All AI API request and response payloads MUST be JSON.** Use `response_format: { type: "json_object" }` for Groq and return structured JSON from all `/api/*` routes.
 
 **Request body:**
 ```json

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-primary: #1B3A5C;
+  --color-primary-light: #2563EB;
+  --color-bg-page: var(--page);
+  --color-bg-card: var(--card);
+  --color-bg-sidebar: var(--sidebar);
+  --color-bg-muted: var(--muted);
+  --color-bg-hover: var(--hover);
+  --color-border: var(--bd);
+  --color-text-primary: var(--tp);
+  --color-text-secondary: var(--ts);
+  --color-text-inverse: #FFFFFF;
+  --color-success: #0D9488;
+  --color-danger: #E11D48;
+  --color-warning: #D97706;
+  --color-info: #2563EB;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  --page: #F8FAFC;
+  --card: #FFFFFF;
+  --sidebar: #1B3A5C;
+  --muted: #F1F5F9;
+  --hover: #E2E8F0;
+  --bd: #E2E8F0;
+  --tp: #0F172A;
+  --ts: #64748B;
+}
+
+html.dark {
+  --page: #000000;
+  --card: #111111;
+  --sidebar: #0A0A0A;
+  --muted: #1A1A1A;
+  --hover: #222222;
+  --bd: #222222;
+  --tp: #E2E8F0;
+  --ts: #94A3B8;
+}
+
+body {
+  background: var(--page);
+  color: var(--tp);
+  font-family: var(--font-sans);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: var(--muted);
+  border-color: var(--bd);
+  color: var(--tp);
+}
