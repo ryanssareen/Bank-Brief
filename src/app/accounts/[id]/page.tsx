@@ -72,6 +72,41 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const handleUploadComplete = useCallback(
     async (result: { fileName: string; fileType: string; extractedText: string; summary: Record<string, unknown> }) => {
       if (!user?.uid) return;
+
+      const existingTxKeys = new Set<string>();
+      for (const s of statements) {
+        const sum = s.summary as StatementSummary | undefined;
+        if (!sum?.transactions) continue;
+        for (const t of sum.transactions) {
+          existingTxKeys.add(`${t.date}|${t.description}|${t.amount}|${t.type}`);
+        }
+      }
+
+      const rawSummary = result.summary as { transactions?: { date: string; description: string; amount: number; type: string; category: string }[] } & Record<string, unknown>;
+      const allTx = rawSummary.transactions ?? [];
+      const uniqueTx = allTx.filter(
+        (t) => !existingTxKeys.has(`${t.date}|${t.description}|${t.amount}|${t.type}`)
+      );
+
+      const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+      const totalDebits = uniqueTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+
+      const catMap = new Map<string, number>();
+      for (const t of uniqueTx) {
+        if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
+      }
+      const topCategories = [...catMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, amount]) => ({ name, amount }));
+
+      const deduped = {
+        ...rawSummary,
+        transactions: uniqueTx,
+        totalCredits,
+        totalDebits,
+        topCategories,
+      };
+
       await addDoc(
         collection(db, 'users', user.uid, 'accounts', accountId, 'statements'),
         {
@@ -82,12 +117,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           periodEnd: '',
           status: 'done',
           rawText: result.extractedText,
-          summary: { ...result.summary, generatedAt: serverTimestamp() },
+          summary: { ...deduped, generatedAt: serverTimestamp() },
         }
       );
       setShowUpload(false);
     },
-    [user?.uid, accountId]
+    [user?.uid, accountId, statements]
   );
 
   const currentStatement = statements[selectedIdx];
