@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 
 export async function parseDocument(
   buffer: Buffer,
