@@ -9,10 +9,19 @@ export interface Account {
   id: string;
   name: string;
   bankName: string;
+  accountNumber?: string;
   accountType: 'savings' | 'current' | 'salary';
   currency: string;
+  categoryMap?: CategoryRule[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CategoryRule {
+  keyword: string;
+  category: string;
+  subcategory?: string;
+  disposition?: 'essential' | 'discretionary' | 'income' | 'transfer';
 }
 
 export interface Statement {
@@ -45,6 +54,8 @@ export interface Transaction {
   amount: number;
   type: 'credit' | 'debit';
   category: string;
+  subcategory?: string;
+  disposition?: 'essential' | 'discretionary' | 'income' | 'transfer';
 }
 
 export interface FixedDeposit {

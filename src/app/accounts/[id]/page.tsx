@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
-import { doc, collection, onSnapshot, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useMemo, use } from 'react';
+import { doc, collection, onSnapshot, addDoc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card } from '@/components/ui/Card';
@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { AccountSummary } from '@/components/accounts/AccountSummary';
+import { EditAccountModal } from '@/components/accounts/EditAccountModal';
+import { CategoryMapModal } from '@/components/accounts/CategoryMapModal';
 import { FileUploader } from '@/components/upload/FileUploader';
 import { SpendingBarChart } from '@/components/charts/SpendingBarChart';
 import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
@@ -17,9 +19,9 @@ import { TrendLineChart } from '@/components/charts/TrendLineChart';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { Account, Statement, StatementSummary } from '@/types';
+import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
 export default function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: accountId } = use(params);
@@ -29,6 +31,8 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showCategoryMap, setShowCategoryMap] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
 
@@ -125,8 +129,64 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId, statements]
   );
 
+  const overallSummary = useMemo<StatementSummary | undefined>(() => {
+    if (statements.length === 0) return undefined;
+    const txMap = new Map<string, Transaction>();
+    for (const s of statements) {
+      const sum = s.summary as StatementSummary | undefined;
+      if (!sum?.transactions) continue;
+      for (const t of sum.transactions) {
+        const key = `${t.date}|${t.description}|${t.amount}|${t.type}`;
+        if (!txMap.has(key)) txMap.set(key, t);
+      }
+    }
+    const allTx = [...txMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const totalCredits = allTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+    const totalDebits = allTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+    const catMap = new Map<string, number>();
+    for (const t of allTx) {
+      if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
+    }
+    const topCategories = [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount }));
+    const first = statements[statements.length - 1]?.summary as StatementSummary | undefined;
+    const last = statements[0]?.summary as StatementSummary | undefined;
+    return {
+      totalCredits,
+      totalDebits,
+      openingBalance: first?.openingBalance ?? 0,
+      closingBalance: last?.closingBalance ?? 0,
+      topCategories,
+      insights: last?.insights ?? [],
+      transactions: allTx,
+      generatedAt: new Date(),
+    };
+  }, [statements]);
+
   const currentStatement = statements[selectedIdx];
-  const summary = currentStatement?.summary as StatementSummary | undefined;
+  const isOverall = selectedIdx === -1;
+  const summary = isOverall ? overallSummary : (currentStatement?.summary as StatementSummary | undefined);
+
+  const handleEditSave = useCallback(
+    async (_id: string, data: { name: string; bankName: string; accountNumber?: string; accountType: 'savings' | 'current' | 'salary' }) => {
+      if (!user?.uid) return;
+      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    [user?.uid, accountId]
+  );
+
+  const handleCategoryMapSave = useCallback(
+    async (rules: CategoryRule[]) => {
+      if (!user?.uid) return;
+      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
+        categoryMap: rules,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    [user?.uid, accountId]
+  );
 
   const handleSendEmail = async () => {
     if (!user?.email || !summary) return;
@@ -170,12 +230,30 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   {account?.accountType && (
                     <Badge variant="info">{account.accountType}</Badge>
                   )}
+                  <button
+                    onClick={() => setShowEdit(true)}
+                    className="p-1.5 rounded-lg hover:bg-bg-muted transition-colors cursor-pointer"
+                    title="Edit account"
+                  >
+                    <Pencil className="h-4 w-4 text-text-secondary" />
+                  </button>
                 </div>
-                {account?.bankName && (
-                  <p className="text-sm text-text-secondary mt-1">{account.bankName}</p>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                  {account?.bankName && (
+                    <p className="text-sm text-text-secondary">{account.bankName}</p>
+                  )}
+                  {account?.accountNumber && (
+                    <p className="text-sm text-text-secondary">
+                      &middot; A/C: {account.accountNumber}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="secondary" size="md" onClick={() => setShowCategoryMap(true)}>
+                  <ListFilter className="h-4 w-4" />
+                  Category Map
+                </Button>
                 <Button onClick={() => setShowUpload(true)} size="md">
                   <Upload className="h-4 w-4" />
                   Upload Statement
@@ -194,16 +272,22 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            {statements.length > 1 && (
-              <select
-                value={selectedIdx}
-                onChange={(e) => setSelectedIdx(Number(e.target.value))}
-                className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
-              >
-                {statements.map((s, i) => (
-                  <option key={s.id} value={i}>{s.fileName}</option>
-                ))}
-              </select>
+            {statements.length > 0 && (
+              <div className="flex items-center gap-3">
+                <Layers className="h-4 w-4 text-text-secondary" />
+                <select
+                  value={selectedIdx}
+                  onChange={(e) => setSelectedIdx(Number(e.target.value))}
+                  className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
+                >
+                  {statements.length > 1 && (
+                    <option value={-1}>Overall (all statements merged)</option>
+                  )}
+                  {statements.map((s, i) => (
+                    <option key={s.id} value={i}>{s.fileName}</option>
+                  ))}
+                </select>
+              </div>
             )}
 
             {summary ? (
@@ -254,6 +338,8 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <th className="px-4 py-3 font-medium text-text-secondary">Date</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
                           </tr>
                         </thead>
@@ -264,6 +350,20 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                               <td className="px-4 py-3">{t.description}</td>
                               <td className="px-4 py-3">
                                 <Badge>{t.category}</Badge>
+                              </td>
+                              <td className="px-4 py-3 text-text-secondary">
+                                {t.subcategory || '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                {t.disposition ? (
+                                  <Badge variant={
+                                    t.disposition === 'essential' ? 'warning' :
+                                    t.disposition === 'income' ? 'success' :
+                                    t.disposition === 'transfer' ? 'info' : 'default'
+                                  }>
+                                    {t.disposition}
+                                  </Badge>
+                                ) : '—'}
                               </td>
                               <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
                                 ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>
@@ -297,9 +397,25 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
             <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Upload Statement">
               <FileUploader
                 accountId={accountId}
+                accountName={account?.name}
+                categoryRules={account?.categoryMap}
                 onUploadComplete={handleUploadComplete}
               />
             </Modal>
+
+            <EditAccountModal
+              open={showEdit}
+              onClose={() => setShowEdit(false)}
+              account={account}
+              onSave={handleEditSave}
+            />
+
+            <CategoryMapModal
+              open={showCategoryMap}
+              onClose={() => setShowCategoryMap(false)}
+              rules={account?.categoryMap ?? []}
+              onSave={handleCategoryMapSave}
+            />
           </>
         )}
       </div>

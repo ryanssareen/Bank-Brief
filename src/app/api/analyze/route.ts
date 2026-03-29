@@ -4,7 +4,7 @@ import { analyzeStatement } from '@/lib/groq/client';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { extractedText, accountName, currency } = body;
+    const { extractedText, accountName, currency, categoryRules } = body;
 
     if (!extractedText) {
       return NextResponse.json(
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     const summary = await analyzeStatement(
       extractedText,
       accountName ?? 'Unknown',
-      currency ?? 'INR'
+      currency ?? 'INR',
+      categoryRules
     );
 
     return NextResponse.json({ success: true, summary });

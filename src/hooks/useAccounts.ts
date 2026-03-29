@@ -7,6 +7,7 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   serverTimestamp,
@@ -56,6 +57,17 @@ export function useAccounts(uid: string | undefined) {
     [uid]
   );
 
+  const updateAccount = useCallback(
+    async (accountId: string, data: Partial<Pick<Account, 'name' | 'bankName' | 'accountNumber' | 'accountType' | 'categoryMap'>>) => {
+      if (!uid) return;
+      await updateDoc(doc(db, 'users', uid, 'accounts', accountId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    [uid]
+  );
+
   const deleteAccount = useCallback(
     async (accountId: string) => {
       if (!uid) return;
@@ -64,5 +76,5 @@ export function useAccounts(uid: string | undefined) {
     [uid]
   );
 
-  return { accounts, loading, createAccount, deleteAccount };
+  return { accounts, loading, createAccount, updateAccount, deleteAccount };
 }

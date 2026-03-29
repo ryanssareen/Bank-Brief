@@ -1,68 +1,78 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+import type { Account } from '@/types';
 
-interface CreateAccountModalProps {
+interface EditAccountModalProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (data: {
+  account: Account | null;
+  onSave: (accountId: string, data: {
     name: string;
     bankName: string;
     accountNumber?: string;
     accountType: 'savings' | 'current' | 'salary';
-    currency: string;
   }) => Promise<void>;
 }
 
-export function CreateAccountModal({ open, onClose, onCreate }: CreateAccountModalProps) {
+export function EditAccountModal({ open, onClose, account, onSave }: EditAccountModalProps) {
   const [name, setName] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountType, setAccountType] = useState<'savings' | 'current' | 'salary'>('savings');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (account) {
+      setName(account.name);
+      setBankName(account.bankName);
+      setAccountNumber(account.accountNumber ?? '');
+      setAccountType(account.accountType);
+    }
+  }, [account]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!account) return;
     setLoading(true);
     try {
-      await onCreate({ name, bankName, accountNumber: accountNumber || undefined, accountType, currency: 'INR' });
-      toast.success('Account created');
-      setName('');
-      setBankName('');
-      setAccountNumber('');
-      setAccountType('savings');
+      await onSave(account.id, {
+        name,
+        bankName,
+        accountNumber: accountNumber || undefined,
+        accountType,
+      });
+      toast.success('Account updated');
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create account');
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Bank Account">
+    <Modal open={open} onClose={onClose} title="Edit Account">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Account Nickname"
-          placeholder="e.g. HDFC Savings"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
         <Input
           label="Bank Name"
-          placeholder="e.g. HDFC Bank"
           value={bankName}
           onChange={(e) => setBankName(e.target.value)}
           required
         />
         <Input
           label="Account Number"
-          placeholder="e.g. 1234567890 (optional)"
+          placeholder="optional"
           value={accountNumber}
           onChange={(e) => setAccountNumber(e.target.value)}
         />
@@ -82,7 +92,7 @@ export function CreateAccountModal({ open, onClose, onCreate }: CreateAccountMod
           </select>
         </div>
         <Button type="submit" loading={loading} className="w-full">
-          Create Account
+          Save Changes
         </Button>
       </form>
     </Modal>

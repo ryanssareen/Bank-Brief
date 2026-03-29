@@ -53,3 +53,4 @@ setup-complete.ps1
 
 # --- Word docs (keep locally, not in repo) ---
 *.docx
+.env*.local

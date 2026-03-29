@@ -23,7 +23,10 @@ export function AccountCard({ account }: { account: Account }) {
             </div>
             <div>
               <h3 className="font-semibold text-text-primary">{account.name}</h3>
-              <p className="text-sm text-text-secondary">{account.bankName}</p>
+              <p className="text-sm text-text-secondary">
+                {account.bankName}
+                {account.accountNumber && ` · ${account.accountNumber}`}
+              </p>
             </div>
           </div>
           <Badge variant={typeVariant[account.accountType]}>

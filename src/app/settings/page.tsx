@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const isGoogleUser = user?.providerData?.some((p) => p.providerId === 'google.com') ?? false;
 
   useEffect(() => {
     if (user?.displayName) setDisplayName(user.displayName);
@@ -145,20 +146,27 @@ export default function SettingsPage() {
               <p className="text-xs text-text-secondary">Manage your account security</p>
             </div>
           </div>
-          <div className="flex items-center justify-between p-4 rounded-xl bg-bg-page">
-            <div>
-              <p className="text-sm font-medium text-text-primary">Password</p>
-              <p className="text-xs text-text-secondary mt-0.5">Send a password reset link to your email</p>
+          {isGoogleUser ? (
+            <div className="p-4 rounded-xl bg-bg-page">
+              <p className="text-sm font-medium text-text-primary">Signed in with Google</p>
+              <p className="text-xs text-text-secondary mt-0.5">Password is managed by your Google account</p>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleResetPassword}
-              loading={sendingReset}
-            >
-              Reset Password
+          ) : (
+            <div className="flex items-center justify-between p-4 rounded-xl bg-bg-page">
+              <div>
+                <p className="text-sm font-medium text-text-primary">Password</p>
+                <p className="text-xs text-text-secondary mt-0.5">Send a password reset link to your email</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleResetPassword}
+                loading={sendingReset}
+              >
+                Reset Password
             </Button>
           </div>
+          )}
         </Card>
       </div>
     </AppShell>
