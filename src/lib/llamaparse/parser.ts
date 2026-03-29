@@ -1,13 +1,12 @@
 import * as XLSX from 'xlsx';
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 export async function parseDocument(
   buffer: Buffer,
   fileType: string
 ): Promise<string> {
   if (fileType === 'pdf') {
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const result = await parser.getText();
+    const result = await pdfParse(buffer);
     return result.text;
   }
 
