@@ -57,7 +57,7 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
           parsed.push({
             keyword: cols[0],
             category: cols[1] || 'Other',
-            subcategory: cols[2] || undefined,
+            subcategory: cols[2] || '',
             disposition: (DISPOSITIONS.includes(cols[3] as typeof DISPOSITIONS[number])
               ? cols[3] as CategoryRule['disposition']
               : 'discretionary'),
@@ -78,7 +78,14 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
   };
 
   const handleSave = async () => {
-    const valid = rules.filter((r) => r.keyword && r.category);
+    const valid = rules
+      .filter((r) => r.keyword && r.category)
+      .map((r) => ({
+        keyword: r.keyword,
+        category: r.category,
+        subcategory: r.subcategory || '',
+        disposition: r.disposition || 'discretionary',
+      }));
     setLoading(true);
     try {
       await onSave(valid);

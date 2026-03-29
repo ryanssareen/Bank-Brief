@@ -29,7 +29,7 @@ export function CreateAccountModal({ open, onClose, onCreate }: CreateAccountMod
     e.preventDefault();
     setLoading(true);
     try {
-      await onCreate({ name, bankName, accountNumber: accountNumber || undefined, accountType, currency: 'INR' });
+      await onCreate({ name, bankName, accountNumber: accountNumber || '', accountType, currency: 'INR' });
       toast.success('Account created');
       setName('');
       setBankName('');

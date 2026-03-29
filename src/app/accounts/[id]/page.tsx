@@ -82,14 +82,14 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions) continue;
         for (const t of sum.transactions) {
-          existingTxKeys.add(`${t.date}|${t.description}|${t.amount}|${t.type}`);
+          existingTxKeys.add(`${t.date}|${t.description}|${t.amount}`);
         }
       }
 
       const rawSummary = result.summary as { transactions?: { date: string; description: string; amount: number; type: string; category: string }[] } & Record<string, unknown>;
       const allTx = rawSummary.transactions ?? [];
       const uniqueTx = allTx.filter(
-        (t) => !existingTxKeys.has(`${t.date}|${t.description}|${t.amount}|${t.type}`)
+        (t) => !existingTxKeys.has(`${t.date}|${t.description}|${t.amount}`)
       );
 
       const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
@@ -136,7 +136,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       const sum = s.summary as StatementSummary | undefined;
       if (!sum?.transactions) continue;
       for (const t of sum.transactions) {
-        const key = `${t.date}|${t.description}|${t.amount}|${t.type}`;
+        const key = `${t.date}|${t.description}|${t.amount}`;
         if (!txMap.has(key)) txMap.set(key, t);
       }
     }

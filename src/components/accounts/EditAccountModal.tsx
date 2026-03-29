@@ -43,7 +43,7 @@ export function EditAccountModal({ open, onClose, account, onSave }: EditAccount
       await onSave(account.id, {
         name,
         bankName,
-        accountNumber: accountNumber || undefined,
+        accountNumber: accountNumber || '',
         accountType,
       });
       toast.success('Account updated');
