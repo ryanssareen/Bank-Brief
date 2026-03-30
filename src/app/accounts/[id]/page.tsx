@@ -16,6 +16,7 @@ import { FileUploader } from '@/components/upload/FileUploader';
 import { SpendingBarChart } from '@/components/charts/SpendingBarChart';
 import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
+import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonChart';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
@@ -330,7 +331,10 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                       <h3 className="font-semibold text-text-primary mb-4">Spending by Category</h3>
                       <CategoryPieChart categories={summary.topCategories} />
                     </Card>
-                    <Card className="lg:col-span-2">
+                    <Card>
+                      <MonthlyComparisonChart transactions={summary.transactions} />
+                    </Card>
+                    <Card>
                       <h3 className="font-semibold text-text-primary mb-4">Balance Trend</h3>
                       <TrendLineChart
                         transactions={summary.transactions}
