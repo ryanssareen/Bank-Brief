@@ -25,6 +25,8 @@ import { CreateAccountModal } from '@/components/accounts/CreateAccountModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useFixedDeposits } from '@/hooks/useFixedDeposits';
+import { useAccountSummaries } from '@/hooks/useAccountSummaries';
+import { Sparkline } from '@/components/charts/Sparkline';
 import { formatINR } from '@/utils/formatCurrency';
 import type { Account } from '@/types';
 
@@ -41,7 +43,7 @@ function getBankGradient(bankName: string) {
   return key ? bankColors[key] : 'from-primary to-primary-light';
 }
 
-function BankCard({ account }: { account: Account }) {
+function BankCard({ account, sparkData }: { account: Account; sparkData?: { closingBalance: number; balancePoints: number[] } }) {
   const gradient = getBankGradient(account.bankName);
   return (
     <Link href={`/accounts/${account.id}`} className="block group">
@@ -54,7 +56,15 @@ function BankCard({ account }: { account: Account }) {
             <CreditCard className="h-5 w-5 text-white/40" />
           </div>
           <p className="text-lg font-bold mt-1">{account.name}</p>
+          {sparkData && (
+            <p className="text-sm font-semibold text-white/90 mt-0.5">{formatINR(sparkData.closingBalance)}</p>
+          )}
         </div>
+        {sparkData && sparkData.balancePoints.length >= 2 && (
+          <div className="relative opacity-60 -mx-1">
+            <Sparkline data={sparkData.balancePoints} color="rgba(255,255,255,0.8)" height={32} />
+          </div>
+        )}
         <div className="relative flex items-end justify-between">
           <Badge variant="default" className="bg-white/20 text-white border-0 text-[11px]">
             {account.accountType}
@@ -70,7 +80,13 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { accounts, loading, createAccount } = useAccounts(user?.uid);
   const { deposits } = useFixedDeposits(user?.uid);
+  const accountIds = accounts.map((a) => a.id);
+  const summaries = useAccountSummaries(user?.uid, accountIds);
   const [showCreate, setShowCreate] = useState(false);
+
+  const totalBalance = Object.values(summaries).reduce((s, d) => s + d.closingBalance, 0);
+  const totalIncome = Object.values(summaries).reduce((s, d) => s + d.totalCredits, 0);
+  const totalExpenses = Object.values(summaries).reduce((s, d) => s + d.totalDebits, 0);
 
   const totalFDPrincipal = deposits.reduce((s, d) => s + d.principalAmount, 0);
   const totalFDMaturity = deposits.reduce((s, d) => s + d.maturityAmount, 0);
@@ -90,7 +106,7 @@ export default function DashboardPage() {
           <Card className="lg:col-span-2 !p-0 overflow-hidden">
             <div className="bg-gradient-to-br from-primary via-[#1e4a7a] to-primary-light p-8 text-white">
               <p className="text-white/60 text-sm font-medium">Portfolio Overview</p>
-              <p className="text-4xl font-bold mt-2 tracking-tight">{formatINR(0)}</p>
+              <p className="text-4xl font-bold mt-2 tracking-tight">{formatINR(totalBalance)}</p>
               <p className="text-white/50 text-sm mt-1">Total across {accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
               <div className="grid grid-cols-3 gap-4 mt-8">
                 <div className="bg-white/10 rounded-xl p-3">
@@ -98,21 +114,21 @@ export default function DashboardPage() {
                     <ArrowUpRight className="h-3 w-3" />
                     Income
                   </div>
-                  <p className="font-semibold">{formatINR(0)}</p>
+                  <p className="font-semibold">{formatINR(totalIncome)}</p>
                 </div>
                 <div className="bg-white/10 rounded-xl p-3">
                   <div className="flex items-center gap-1.5 text-white/60 text-xs mb-1">
                     <ArrowDownRight className="h-3 w-3" />
                     Expenses
                   </div>
-                  <p className="font-semibold">{formatINR(0)}</p>
+                  <p className="font-semibold">{formatINR(totalExpenses)}</p>
                 </div>
                 <div className="bg-white/10 rounded-xl p-3">
                   <div className="flex items-center gap-1.5 text-white/60 text-xs mb-1">
                     <TrendingUp className="h-3 w-3" />
                     Savings
                   </div>
-                  <p className="font-semibold">{formatINR(0)}</p>
+                  <p className="font-semibold">{formatINR(totalIncome - totalExpenses)}</p>
                 </div>
               </div>
             </div>
@@ -206,7 +222,7 @@ export default function DashboardPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {accounts.map((account) => (
-                <BankCard key={account.id} account={account} />
+                <BankCard key={account.id} account={account} sparkData={summaries[account.id]} />
               ))}
               <button
                 onClick={() => setShowCreate(true)}
