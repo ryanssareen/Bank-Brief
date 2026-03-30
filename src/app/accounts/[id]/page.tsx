@@ -19,7 +19,8 @@ import { TrendLineChart } from '@/components/charts/TrendLineChart';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download } from 'lucide-react';
+import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
@@ -259,15 +260,25 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   Upload Statement
                 </Button>
                 {summary && (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={handleSendEmail}
-                    loading={sendingEmail}
-                  >
-                    <Mail className="h-4 w-4" />
-                    Send Report
-                  </Button>
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={() => exportSummaryCSV(summary, account?.name ?? 'account')}
+                    >
+                      <Download className="h-4 w-4" />
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={handleSendEmail}
+                      loading={sendingEmail}
+                    >
+                      <Mail className="h-4 w-4" />
+                      Send Report
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
