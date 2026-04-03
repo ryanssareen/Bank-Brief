@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, use } from 'react';
+import { useState, useEffect, useCallback, useMemo, use, useRef } from 'react';
 import { doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { AppShell } from '@/components/layout/AppShell';
@@ -20,11 +20,86 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction } from '@/types';
+
+type FilterKey = 'date' | 'type' | 'keyword' | 'category' | 'subcategory' | 'disposition';
+
+function ColumnFilterDropdown({
+  label,
+  values,
+  selected,
+  onChange,
+  align = 'left',
+}: {
+  label: string;
+  values: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const isFiltered = selected.size > 0 && selected.size < values.length;
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center gap-1">
+      <span>{label}</span>
+      <button
+        onClick={() => setOpen((p) => !p)}
+        className={`p-0.5 rounded transition-colors cursor-pointer ${isFiltered ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
+      >
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className={`absolute top-full mt-1 ${align === 'right' ? 'right-0' : 'left-0'} z-50 bg-bg-card border border-border rounded-lg shadow-lg p-2 min-w-[160px] max-h-48 overflow-y-auto`}>
+          <div className="flex gap-2 mb-2 border-b border-border pb-2">
+            <button
+              onClick={() => onChange(new Set(values))}
+              className="text-[10px] text-primary hover:underline cursor-pointer"
+            >
+              All
+            </button>
+            <button
+              onClick={() => onChange(new Set())}
+              className="text-[10px] text-primary hover:underline cursor-pointer"
+            >
+              None
+            </button>
+          </div>
+          {values.map((v) => (
+            <label key={v} className="flex items-center gap-2 px-1 py-0.5 hover:bg-bg-muted rounded cursor-pointer text-xs text-text-primary">
+              <input
+                type="checkbox"
+                checked={selected.has(v)}
+                onChange={(e) => {
+                  const next = new Set(selected);
+                  if (e.target.checked) next.add(v);
+                  else next.delete(v);
+                  onChange(next);
+                }}
+                className="rounded border-border"
+              />
+              {v || '(blank)'}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: accountId } = use(params);
@@ -175,6 +250,46 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const isOverall = selectedIdx === -1;
   const summary = isOverall ? overallSummary : (currentStatement?.summary as StatementSummary | undefined);
 
+  const filterUniqueValues = useMemo(() => {
+    const txs = summary?.transactions ?? [];
+    return {
+      date: [...new Set(txs.map((t) => t.date))].sort(),
+      type: [...new Set(txs.map((t) => t.type))].sort(),
+      keyword: [...new Set(txs.map((t) => t.matchedKeyword ?? ''))].sort(),
+      category: [...new Set(txs.map((t) => t.category ?? ''))].sort(),
+      subcategory: [...new Set(txs.map((t) => t.subcategory ?? ''))].sort(),
+      disposition: [...new Set(txs.map((t) => t.disposition ?? ''))].sort(),
+    };
+  }, [summary?.transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    const txs = summary?.transactions ?? [];
+    return txs
+      .map((t, originalIndex) => ({ t, originalIndex }))
+      .filter(({ t }) => {
+        for (const key of Object.keys(columnFilters) as FilterKey[]) {
+          const selected = columnFilters[key];
+          if (selected.size === 0) continue;
+          let value: string;
+          switch (key) {
+            case 'date': value = t.date; break;
+            case 'type': value = t.type; break;
+            case 'keyword': value = t.matchedKeyword ?? ''; break;
+            case 'category': value = t.category ?? ''; break;
+            case 'subcategory': value = t.subcategory ?? ''; break;
+            case 'disposition': value = t.disposition ?? ''; break;
+          }
+          if (!selected.has(value)) return false;
+        }
+        return true;
+      });
+  }, [summary?.transactions, columnFilters]);
+
+  const updateFilter = useCallback((key: FilterKey, values: Set<string>) => {
+    setColumnFilters((prev) => ({ ...prev, [key]: values }));
+    setSelectedTxIndices(new Set());
+  }, []);
+
   const handleEditSave = useCallback(
     async (_id: string, data: { name: string; bankName: string; accountNumber?: string; accountType: 'savings' | 'current' | 'salary' }) => {
       if (!user?.uid) return;
@@ -284,6 +399,14 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
   const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
+  const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>({
+    date: new Set(),
+    type: new Set(),
+    keyword: new Set(),
+    category: new Set(),
+    subcategory: new Set(),
+    disposition: new Set(),
+  });
 
   const handleApplyCategoryMap = useCallback(
     async () => {
@@ -550,7 +673,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 <Layers className="h-4 w-4 text-text-secondary" />
                 <select
                   value={selectedIdx}
-                  onChange={(e) => { setSelectedIdx(Number(e.target.value)); setSelectedTxIndices(new Set()); }}
+                  onChange={(e) => { setSelectedIdx(Number(e.target.value)); setSelectedTxIndices(new Set()); setColumnFilters({ date: new Set(), type: new Set(), keyword: new Set(), category: new Set(), subcategory: new Set(), disposition: new Set() }); }}
                   className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
                 >
                   {statements.length > 1 && (
@@ -642,6 +765,19 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                         </button>
                       </div>
                     )}
+                    {filteredTransactions.length < (summary?.transactions?.length ?? 0) && (
+                      <div className="flex items-center gap-2 px-4 py-2 bg-bg-muted border-b border-border">
+                        <span className="text-xs text-text-secondary">
+                          Showing {filteredTransactions.length} of {summary?.transactions?.length ?? 0} transactions
+                        </span>
+                        <button
+                          onClick={() => setColumnFilters({ date: new Set(), type: new Set(), keyword: new Set(), category: new Set(), subcategory: new Set(), disposition: new Set() })}
+                          className="text-xs text-primary hover:underline cursor-pointer"
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -650,10 +786,10 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                               <th className="px-4 py-3">
                                 <input
                                   type="checkbox"
-                                  checked={summary.transactions.length > 0 && selectedTxIndices.size === summary.transactions.length}
+                                  checked={filteredTransactions.length > 0 && selectedTxIndices.size === filteredTransactions.length}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      setSelectedTxIndices(new Set(summary.transactions.map((_, i) => i)));
+                                      setSelectedTxIndices(new Set(filteredTransactions.map(({ originalIndex }) => originalIndex)));
                                     } else {
                                       setSelectedTxIndices(new Set());
                                     }
@@ -662,31 +798,43 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                 />
                               </th>
                             )}
-                            <th className="px-4 py-3 font-medium text-text-secondary">Date</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Date" values={filterUniqueValues.date} selected={columnFilters.date} onChange={(v) => updateFilter('date', v)} />
+                            </th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary text-right">
+                              <ColumnFilterDropdown label="Amount" values={filterUniqueValues.type} selected={columnFilters.type} onChange={(v) => updateFilter('type', v)} align="right" />
+                            </th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Account Name</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Keyword</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Keyword" values={filterUniqueValues.keyword} selected={columnFilters.keyword} onChange={(v) => updateFilter('keyword', v)} />
+                            </th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Category" values={filterUniqueValues.category} selected={columnFilters.category} onChange={(v) => updateFilter('category', v)} />
+                            </th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Subcategory" values={filterUniqueValues.subcategory} selected={columnFilters.subcategory} onChange={(v) => updateFilter('subcategory', v)} />
+                            </th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Disposition" values={filterUniqueValues.disposition} selected={columnFilters.disposition} onChange={(v) => updateFilter('disposition', v)} />
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {summary.transactions.map((t, i) => (
-                            <tr key={i} className={`border-b border-border hover:bg-bg-muted ${selectedTxIndices.has(i) ? 'bg-primary/5' : ''}`}>
+                          {filteredTransactions.map(({ t, originalIndex }) => (
+                            <tr key={originalIndex} className={`border-b border-border hover:bg-bg-muted ${selectedTxIndices.has(originalIndex) ? 'bg-primary/5' : ''}`}>
                               {!isOverall && (
                                 <td className="px-4 py-3">
                                   <input
                                     type="checkbox"
-                                    checked={selectedTxIndices.has(i)}
+                                    checked={selectedTxIndices.has(originalIndex)}
                                     onChange={(e) => {
                                       setSelectedTxIndices((prev) => {
                                         const next = new Set(prev);
                                         if (e.target.checked) {
-                                          next.add(i);
+                                          next.add(originalIndex);
                                         } else {
-                                          next.delete(i);
+                                          next.delete(originalIndex);
                                         }
                                         return next;
                                       });
@@ -712,7 +860,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   <input
                                     type="text"
                                     value={t.category}
-                                    onChange={(e) => handleUpdateTransaction(i, 'category', e.target.value)}
+                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'category', e.target.value)}
                                     className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                   />
                                 ) : (
@@ -724,7 +872,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   <input
                                     type="text"
                                     value={t.subcategory ?? ''}
-                                    onChange={(e) => handleUpdateTransaction(i, 'subcategory', e.target.value)}
+                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'subcategory', e.target.value)}
                                     maxLength={100}
                                     className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                     placeholder="—"
@@ -737,7 +885,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                 {!isOverall ? (
                                   <select
                                     value={t.disposition ?? ''}
-                                    onChange={(e) => handleUpdateTransaction(i, 'disposition', e.target.value)}
+                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'disposition', e.target.value)}
                                     className="px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                   >
                                     <option value="">—</option>
