@@ -26,7 +26,17 @@ import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction } from '@/types';
 
-type FilterKey = 'date' | 'type' | 'keyword' | 'category' | 'subcategory' | 'disposition';
+type FilterKey = 'date' | 'type' | 'accountName' | 'keyword' | 'category' | 'subcategory' | 'disposition';
+
+const emptyFilters = (): Record<FilterKey, Set<string>> => ({
+  date: new Set(),
+  type: new Set(),
+  accountName: new Set(),
+  keyword: new Set(),
+  category: new Set(),
+  subcategory: new Set(),
+  disposition: new Set(),
+});
 
 function ColumnFilterDropdown({
   label,
@@ -113,14 +123,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>({
-    date: new Set(),
-    type: new Set(),
-    keyword: new Set(),
-    category: new Set(),
-    subcategory: new Set(),
-    disposition: new Set(),
-  });
+  const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>(emptyFilters);
   const [catSuggestion, setCatSuggestion] = useState<{
     keyword: string;
     category: string;
@@ -258,40 +261,53 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const isOverall = selectedIdx === -1;
   const summary = isOverall ? overallSummary : (currentStatement?.summary as StatementSummary | undefined);
 
+  const getTxFilterValue = useCallback((t: Transaction, key: FilterKey): string => {
+    switch (key) {
+      case 'date': return t.date;
+      case 'type': return t.type;
+      case 'accountName': return account?.name ?? '';
+      case 'keyword': return t.matchedKeyword ?? '';
+      case 'category': return t.category ?? '';
+      case 'subcategory': return t.subcategory ?? '';
+      case 'disposition': return t.disposition ?? '';
+    }
+  }, [account?.name]);
+
   const filterUniqueValues = useMemo(() => {
     const txs = summary?.transactions ?? [];
-    return {
-      date: [...new Set(txs.map((t) => t.date))].sort(),
-      type: [...new Set(txs.map((t) => t.type))].sort(),
-      keyword: [...new Set(txs.map((t) => t.matchedKeyword ?? ''))].sort(),
-      category: [...new Set(txs.map((t) => t.category ?? ''))].sort(),
-      subcategory: [...new Set(txs.map((t) => t.subcategory ?? ''))].sort(),
-      disposition: [...new Set(txs.map((t) => t.disposition ?? ''))].sort(),
-    };
-  }, [summary?.transactions]);
+    const allKeys: FilterKey[] = ['date', 'type', 'accountName', 'keyword', 'category', 'subcategory', 'disposition'];
+    const result = {} as Record<FilterKey, string[]>;
 
-  const filteredTransactions = useMemo(() => {
-    const txs = summary?.transactions ?? [];
-    return txs
-      .map((t, originalIndex) => ({ t, originalIndex }))
-      .filter(({ t }) => {
-        for (const key of Object.keys(columnFilters) as FilterKey[]) {
-          const selected = columnFilters[key];
+    for (const key of allKeys) {
+      // Filter transactions by all OTHER active filters (not this column's filter)
+      const filtered = txs.filter((t) => {
+        for (const otherKey of allKeys) {
+          if (otherKey === key) continue;
+          const selected = columnFilters[otherKey];
           if (selected.size === 0) continue;
-          let value: string;
-          switch (key) {
-            case 'date': value = t.date; break;
-            case 'type': value = t.type; break;
-            case 'keyword': value = t.matchedKeyword ?? ''; break;
-            case 'category': value = t.category ?? ''; break;
-            case 'subcategory': value = t.subcategory ?? ''; break;
-            case 'disposition': value = t.disposition ?? ''; break;
-          }
-          if (!selected.has(value)) return false;
+          if (!selected.has(getTxFilterValue(t, otherKey))) return false;
         }
         return true;
       });
-  }, [summary?.transactions, columnFilters]);
+      result[key] = [...new Set(filtered.map((t) => getTxFilterValue(t, key)))].sort();
+    }
+    return result;
+  }, [summary?.transactions, columnFilters, getTxFilterValue]);
+
+  const filteredTransactions = useMemo(() => {
+    const txs = summary?.transactions ?? [];
+    const allKeys = Object.keys(columnFilters) as FilterKey[];
+    return txs
+      .map((t, originalIndex) => ({ t, originalIndex }))
+      .filter(({ t }) => {
+        for (const key of allKeys) {
+          const selected = columnFilters[key];
+          if (selected.size === 0) continue;
+          if (!selected.has(getTxFilterValue(t, key))) return false;
+        }
+        return true;
+      });
+  }, [summary?.transactions, columnFilters, getTxFilterValue]);
 
   const updateFilter = useCallback((key: FilterKey, values: Set<string>) => {
     setColumnFilters((prev) => ({ ...prev, [key]: values }));
@@ -673,7 +689,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 <Layers className="h-4 w-4 text-text-secondary" />
                 <select
                   value={selectedIdx}
-                  onChange={(e) => { setSelectedIdx(Number(e.target.value)); setSelectedTxIndices(new Set()); setColumnFilters({ date: new Set(), type: new Set(), keyword: new Set(), category: new Set(), subcategory: new Set(), disposition: new Set() }); }}
+                  onChange={(e) => { setSelectedIdx(Number(e.target.value)); setSelectedTxIndices(new Set()); setColumnFilters(emptyFilters()); }}
                   className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
                 >
                   {statements.length > 1 && (
@@ -771,7 +787,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           Showing {filteredTransactions.length} of {summary?.transactions?.length ?? 0} transactions
                         </span>
                         <button
-                          onClick={() => setColumnFilters({ date: new Set(), type: new Set(), keyword: new Set(), category: new Set(), subcategory: new Set(), disposition: new Set() })}
+                          onClick={() => setColumnFilters(emptyFilters())}
                           className="text-xs text-primary hover:underline cursor-pointer"
                         >
                           Clear filters
@@ -805,7 +821,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">
                               <ColumnFilterDropdown label="Amount" values={filterUniqueValues.type} selected={columnFilters.type} onChange={(v) => updateFilter('type', v)} align="right" />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Account Name</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Account Name" values={filterUniqueValues.accountName} selected={columnFilters.accountName} onChange={(v) => updateFilter('accountName', v)} />
+                            </th>
                             <th className="px-4 py-3 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Keyword" values={filterUniqueValues.keyword} selected={columnFilters.keyword} onChange={(v) => updateFilter('keyword', v)} />
                             </th>
