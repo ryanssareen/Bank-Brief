@@ -302,8 +302,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           if (!sum?.transactions?.length) continue;
 
           const updatedTx = sum.transactions.map((t) => {
-            if (t.disposition) return t;
-
             const descLower = t.description.toLowerCase();
             for (const rule of rules) {
               if (descLower.includes(rule.keyword.toLowerCase())) {
@@ -312,11 +310,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   ...t,
                   category: rule.category,
                   subcategory: rule.subcategory ?? '',
+                  matchedKeyword: rule.keyword,
                 };
               }
             }
 
-            return { ...t, category: '', subcategory: '' };
+            return { ...t, category: '', subcategory: '', matchedKeyword: '' };
           });
 
           await updateDoc(
@@ -600,6 +599,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Account Name</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Keyword</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
@@ -616,6 +616,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                               </td>
                               <td className="px-4 py-3 text-text-secondary text-xs">
                                 {account?.name || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-text-secondary text-xs">
+                                {t.matchedKeyword || '—'}
                               </td>
                               <td className="px-4 py-3">
                                 {!isOverall ? (
@@ -635,6 +638,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                     type="text"
                                     value={t.subcategory ?? ''}
                                     onChange={(e) => handleUpdateTransaction(i, 'subcategory', e.target.value)}
+                                    maxLength={100}
                                     className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                     placeholder="—"
                                   />

@@ -201,6 +201,7 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
                       placeholder="optional"
                       value={rule.subcategory ?? ''}
                       onChange={(e) => updateRule(idx, 'subcategory', e.target.value)}
+                      maxLength={100}
                     />
                     <button
                       onClick={() => removeRule(idx)}

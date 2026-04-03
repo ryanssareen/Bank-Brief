@@ -54,6 +54,7 @@ export interface Transaction {
   type: 'credit' | 'debit';
   category: string;
   subcategory?: string;
+  matchedKeyword?: string;
   disposition?: '' | 'Ok' | 'To Be Settled';
 }
 
