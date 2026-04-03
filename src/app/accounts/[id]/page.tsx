@@ -208,6 +208,80 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId, statements.length]
   );
 
+  const deduplicateStatements = useCallback(
+    async () => {
+      if (!user?.uid || statements.length < 2) return;
+
+      const statementsWithKeys = statements
+        .filter((s) => s.summary && (s.summary as StatementSummary).transactions?.length)
+        .map((s) => {
+          const txKeys = new Set(
+            ((s.summary as StatementSummary).transactions ?? []).map(
+              (t) => `${t.date}|${t.description}|${t.amount}`
+            )
+          );
+          return { statement: s, txKeys };
+        });
+
+      for (let i = 0; i < statementsWithKeys.length; i++) {
+        for (let j = i + 1; j < statementsWithKeys.length; j++) {
+          const a = statementsWithKeys[i];
+          const b = statementsWithKeys[j];
+          const smaller = a.txKeys.size <= b.txKeys.size ? a : b;
+          const larger = a.txKeys.size <= b.txKeys.size ? b : a;
+
+          let overlap = 0;
+          for (const key of smaller.txKeys) {
+            if (larger.txKeys.has(key)) overlap++;
+          }
+
+          const overlapRatio = overlap / smaller.txKeys.size;
+          if (overlapRatio < 0.8) continue;
+
+          const mergedTxMap = new Map<string, Transaction>();
+          for (const t of (larger.statement.summary as StatementSummary).transactions) {
+            mergedTxMap.set(`${t.date}|${t.description}|${t.amount}`, t);
+          }
+          for (const t of (smaller.statement.summary as StatementSummary).transactions) {
+            const key = `${t.date}|${t.description}|${t.amount}`;
+            if (!mergedTxMap.has(key)) mergedTxMap.set(key, t);
+          }
+
+          const mergedTx = [...mergedTxMap.values()].sort((x, y) => x.date.localeCompare(y.date));
+          const totalCredits = mergedTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+          const totalDebits = mergedTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+          const catMap = new Map<string, number>();
+          for (const t of mergedTx) {
+            if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
+          }
+          const topCategories = [...catMap.entries()].sort((x, y) => y[1] - x[1]).map(([name, amount]) => ({ name, amount }));
+
+          const keepRef = doc(db, 'users', user.uid, 'accounts', accountId, 'statements', larger.statement.id);
+          const removeRef = doc(db, 'users', user.uid, 'accounts', accountId, 'statements', smaller.statement.id);
+
+          const existingSummary = larger.statement.summary as StatementSummary;
+          await updateDoc(keepRef, {
+            summary: {
+              ...existingSummary,
+              transactions: mergedTx,
+              totalCredits,
+              totalDebits,
+              topCategories,
+            },
+          });
+          await deleteDoc(removeRef);
+          return;
+        }
+      }
+    },
+    [user?.uid, accountId, statements]
+  );
+
+  useEffect(() => {
+    if (statements.length < 2) return;
+    deduplicateStatements();
+  }, [statements.length, deduplicateStatements]);
+
   const handleSendEmail = async () => {
     if (!user?.email || !summary) return;
     setSendingEmail(true);
