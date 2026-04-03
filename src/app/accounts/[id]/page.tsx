@@ -283,6 +283,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   }, [user?.uid, accountId, account?.categoryMap, catSuggestion]);
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
+  const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
 
   const handleApplyCategoryMap = useCallback(
     async () => {
@@ -332,6 +333,30 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       }
     },
     [user?.uid, accountId, account?.categoryMap, statements]
+  );
+
+  const handleBulkDisposition = useCallback(
+    async (disposition: '' | 'Ok' | 'To Be Settled') => {
+      if (!user?.uid || isOverall || !currentStatement || selectedTxIndices.size === 0) return;
+      const sum = currentStatement.summary as StatementSummary | undefined;
+      if (!sum?.transactions) return;
+
+      const updatedTx = sum.transactions.map((t, i) =>
+        selectedTxIndices.has(i) ? { ...t, disposition } : t
+      );
+
+      try {
+        await updateDoc(
+          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
+          { 'summary.transactions': updatedTx }
+        );
+        toast.success(`Updated disposition for ${selectedTxIndices.size} transaction(s)`);
+        setSelectedTxIndices(new Set());
+      } catch {
+        toast.error('Failed to update dispositions');
+      }
+    },
+    [user?.uid, accountId, isOverall, currentStatement, selectedTxIndices]
   );
 
   const deduplicateStatements = useCallback(
@@ -525,7 +550,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 <Layers className="h-4 w-4 text-text-secondary" />
                 <select
                   value={selectedIdx}
-                  onChange={(e) => setSelectedIdx(Number(e.target.value))}
+                  onChange={(e) => { setSelectedIdx(Number(e.target.value)); setSelectedTxIndices(new Set()); }}
                   className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
                 >
                   {statements.length > 1 && (
@@ -591,10 +616,52 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
                 {activeTab === 'transactions' && (
                   <Card padding={false}>
+                    {!isOverall && selectedTxIndices.size > 0 && (
+                      <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b border-primary/20">
+                        <span className="text-xs font-medium text-text-primary">
+                          {selectedTxIndices.size} selected
+                        </span>
+                        <span className="text-xs text-text-secondary">Set disposition:</span>
+                        <button
+                          onClick={() => handleBulkDisposition('')}
+                          className="px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary hover:bg-bg-muted transition-colors cursor-pointer"
+                        >
+                          Blank
+                        </button>
+                        <button
+                          onClick={() => handleBulkDisposition('Ok')}
+                          className="px-2 py-1 text-xs border border-success/40 rounded bg-success/10 text-success hover:bg-success/20 transition-colors cursor-pointer"
+                        >
+                          Ok
+                        </button>
+                        <button
+                          onClick={() => handleBulkDisposition('To Be Settled')}
+                          className="px-2 py-1 text-xs border border-warning/40 rounded bg-warning/10 text-warning hover:bg-warning/20 transition-colors cursor-pointer"
+                        >
+                          To Be Settled
+                        </button>
+                      </div>
+                    )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border text-left">
+                            {!isOverall && (
+                              <th className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={summary.transactions.length > 0 && selectedTxIndices.size === summary.transactions.length}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedTxIndices(new Set(summary.transactions.map((_, i) => i)));
+                                    } else {
+                                      setSelectedTxIndices(new Set());
+                                    }
+                                  }}
+                                  className="rounded border-border cursor-pointer"
+                                />
+                              </th>
+                            )}
                             <th className="px-4 py-3 font-medium text-text-secondary">Date</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
@@ -607,7 +674,27 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                         </thead>
                         <tbody>
                           {summary.transactions.map((t, i) => (
-                            <tr key={i} className="border-b border-border hover:bg-bg-muted">
+                            <tr key={i} className={`border-b border-border hover:bg-bg-muted ${selectedTxIndices.has(i) ? 'bg-primary/5' : ''}`}>
+                              {!isOverall && (
+                                <td className="px-4 py-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedTxIndices.has(i)}
+                                    onChange={(e) => {
+                                      setSelectedTxIndices((prev) => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) {
+                                          next.add(i);
+                                        } else {
+                                          next.delete(i);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                    className="rounded border-border cursor-pointer"
+                                  />
+                                </td>
+                              )}
                               <td className="px-4 py-3 whitespace-nowrap">{t.date}</td>
                               <td className="px-4 py-3">{t.description}</td>
                               <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
