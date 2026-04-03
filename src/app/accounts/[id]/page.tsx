@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, use } from 'react';
-import { doc, collection, onSnapshot, addDoc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card } from '@/components/ui/Card';
@@ -20,7 +20,7 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2 } from 'lucide-react';
 import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
@@ -190,6 +190,24 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId]
   );
 
+  const handleDeleteStatement = useCallback(
+    async (statementId: string) => {
+      if (!user?.uid) return;
+      if (!confirm('Remove this statement? This cannot be undone.')) return;
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'accounts', accountId, 'statements', statementId));
+        setSelectedIdx((prev) => {
+          if (statements.length <= 2) return 0;
+          return prev > 0 ? prev - 1 : -1;
+        });
+        toast.success('Statement removed');
+      } catch {
+        toast.error('Failed to remove statement');
+      }
+    },
+    [user?.uid, accountId, statements.length]
+  );
+
   const handleSendEmail = async () => {
     if (!user?.email || !summary) return;
     setSendingEmail(true);
@@ -299,6 +317,15 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                     <option key={s.id} value={i}>{s.fileName}</option>
                   ))}
                 </select>
+                {!isOverall && currentStatement && (
+                  <button
+                    onClick={() => handleDeleteStatement(currentStatement.id)}
+                    className="p-1.5 rounded-lg hover:bg-danger/10 transition-colors cursor-pointer"
+                    title="Remove statement"
+                  >
+                    <Trash2 className="h-4 w-4 text-text-secondary hover:text-danger" />
+                  </button>
+                )}
               </div>
             )}
 
