@@ -724,7 +724,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               <FileUploader
                 accountId={accountId}
                 accountName={account?.name}
-                categoryRules={account?.categoryMap}
                 onUploadComplete={handleUploadComplete}
               />
             </Modal>

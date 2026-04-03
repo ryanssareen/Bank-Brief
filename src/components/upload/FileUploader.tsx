@@ -5,12 +5,10 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
-import type { CategoryRule } from '@/types';
 
 interface FileUploaderProps {
   accountId: string;
   accountName?: string;
-  categoryRules?: CategoryRule[];
   onUploadComplete: (result: {
     fileName: string;
     fileType: string;
@@ -19,7 +17,7 @@ interface FileUploaderProps {
   }) => void;
 }
 
-export function FileUploader({ accountId, accountName, categoryRules, onUploadComplete }: FileUploaderProps) {
+export function FileUploader({ accountId, accountName, onUploadComplete }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -66,7 +64,6 @@ export function FileUploader({ accountId, accountName, categoryRules, onUploadCo
           parsed: parseJson.parsed ?? null,
           accountName: accountName ?? accountId,
           currency: 'INR',
-          categoryRules,
         }),
       });
       const analyzeJson = await analyzeRes.json();
