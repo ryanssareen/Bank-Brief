@@ -13,19 +13,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const summary = parsed
-      ? await categorizeTransactions(
+    let summary;
+
+    if (parsed?.transactions?.length) {
+      try {
+        summary = await categorizeTransactions(
           parsed,
           accountName ?? 'Unknown',
           currency ?? 'INR',
           categoryRules
-        )
-      : await analyzeStatement(
-          extractedText,
-          accountName ?? 'Unknown',
-          currency ?? 'INR',
-          categoryRules
         );
+      } catch {
+        if (extractedText) {
+          summary = await analyzeStatement(
+            extractedText,
+            accountName ?? 'Unknown',
+            currency ?? 'INR',
+            categoryRules
+          );
+        } else {
+          throw new Error('Categorization failed and no text fallback available');
+        }
+      }
+    } else {
+      summary = await analyzeStatement(
+        extractedText,
+        accountName ?? 'Unknown',
+        currency ?? 'INR',
+        categoryRules
+      );
+    }
 
     return NextResponse.json({ success: true, summary });
   } catch (err) {

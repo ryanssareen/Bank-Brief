@@ -143,6 +143,12 @@ export async function analyzeStatement(
 
   const prompt = `You are a financial analyst assistant. Analyze the following bank statement text and extract structured financial data.
 
+CRITICAL RULES:
+- ALL number fields MUST be pre-computed numeric literals (e.g. 1026658, NOT 562 + 566 + ...)
+- NEVER use arithmetic expressions — only final computed values
+- Dates in the statement may be DD/MM/YYYY format — convert to YYYY-MM-DD correctly (e.g. 01/02/2025 = February 1st = 2025-02-01, NOT January 2nd)
+- If the statement provides Opening Balance, Closing Balance, Total Deposits, Total Withdrawals in a header row, use those exact values
+
 Return a JSON object with EXACTLY this structure:
 {
   "totalCredits": number,
