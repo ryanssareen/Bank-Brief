@@ -16,12 +16,13 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const extractedText = await parseDocument(buffer, fileType);
+    const result = await parseDocument(buffer, fileType);
 
     return NextResponse.json({
       success: true,
-      extractedText,
-      pageCount: Math.ceil(extractedText.length / 3000),
+      extractedText: result.extractedText,
+      parsed: result.parsed ?? null,
+      pageCount: Math.ceil(result.extractedText.length / 3000),
     });
   } catch (err) {
     return NextResponse.json(

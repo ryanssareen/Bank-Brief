@@ -63,6 +63,7 @@ export function FileUploader({ accountId, accountName, categoryRules, onUploadCo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           extractedText: parseJson.extractedText,
+          parsed: parseJson.parsed ?? null,
           accountName: accountName ?? accountId,
           currency: 'INR',
           categoryRules,
