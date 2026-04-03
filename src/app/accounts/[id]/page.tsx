@@ -310,11 +310,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   ...t,
                   category: rule.category,
                   subcategory: rule.subcategory ?? '',
+                  matchedKeyword: rule.keyword,
                 };
               }
             }
 
-            return { ...t, category: '', subcategory: '' };
+            return { ...t, category: '', subcategory: '', matchedKeyword: '' };
           });
 
           await updateDoc(
@@ -598,6 +599,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Account Name</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Keyword</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
@@ -614,6 +616,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                               </td>
                               <td className="px-4 py-3 text-text-secondary text-xs">
                                 {account?.name || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-text-secondary text-xs">
+                                {t.matchedKeyword || '—'}
                               </td>
                               <td className="px-4 py-3">
                                 {!isOverall ? (
