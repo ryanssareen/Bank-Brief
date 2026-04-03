@@ -142,6 +142,7 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
                   placeholder="optional"
                   value={rule.subcategory ?? ''}
                   onChange={(e) => updateRule(idx, 'subcategory', e.target.value)}
+                  maxLength={100}
                 />
                 <button
                   onClick={() => removeRule(idx)}

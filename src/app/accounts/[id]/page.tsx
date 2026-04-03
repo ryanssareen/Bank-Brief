@@ -302,8 +302,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           if (!sum?.transactions?.length) continue;
 
           const updatedTx = sum.transactions.map((t) => {
-            if (t.disposition) return t;
-
             const descLower = t.description.toLowerCase();
             for (const rule of rules) {
               if (descLower.includes(rule.keyword.toLowerCase())) {
@@ -635,6 +633,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                     type="text"
                                     value={t.subcategory ?? ''}
                                     onChange={(e) => handleUpdateTransaction(i, 'subcategory', e.target.value)}
+                                    maxLength={100}
                                     className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                     placeholder="—"
                                   />
