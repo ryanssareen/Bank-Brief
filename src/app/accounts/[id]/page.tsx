@@ -293,43 +293,39 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
       setApplyingCategoryMap(true);
       try {
+        const rules = account.categoryMap!;
         let updated = 0;
+        let totalMatched = 0;
+
         for (const stmt of statements) {
           const sum = stmt.summary as StatementSummary | undefined;
           if (!sum?.transactions?.length) continue;
 
-          let changed = false;
           const updatedTx = sum.transactions.map((t) => {
             if (t.disposition) return t;
 
-            let matchedCategory = '';
-            let matchedSubcategory = '';
             const descLower = t.description.toLowerCase();
-
-            for (const rule of account.categoryMap!) {
+            for (const rule of rules) {
               if (descLower.includes(rule.keyword.toLowerCase())) {
-                matchedCategory = rule.category;
-                matchedSubcategory = rule.subcategory ?? '';
-                break;
+                totalMatched++;
+                return {
+                  ...t,
+                  category: rule.category,
+                  subcategory: rule.subcategory ?? '',
+                };
               }
             }
 
-            if (matchedCategory !== t.category || matchedSubcategory !== (t.subcategory ?? '')) {
-              changed = true;
-            }
-
-            return { ...t, category: matchedCategory, subcategory: matchedSubcategory };
+            return { ...t, category: '', subcategory: '' };
           });
 
-          if (changed) {
-            await updateDoc(
-              doc(db, 'users', user.uid, 'accounts', accountId, 'statements', stmt.id),
-              { 'summary.transactions': updatedTx }
-            );
-            updated++;
-          }
+          await updateDoc(
+            doc(db, 'users', user.uid, 'accounts', accountId, 'statements', stmt.id),
+            { 'summary.transactions': updatedTx }
+          );
+          updated++;
         }
-        toast.success(`Updated ${updated} statement(s) based on category map`);
+        toast.success(`Updated ${updated} statement(s) — ${totalMatched} transactions matched rules`);
       } catch {
         toast.error('Failed to apply category map');
       } finally {
