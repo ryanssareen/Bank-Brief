@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Trash2, Upload, ArrowLeft, Download } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowLeft, Download, ArrowUpToLine } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import type { Account, CategoryRule } from '@/types';
@@ -45,6 +45,13 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
 
   const removeRule = (idx: number) => {
     setRules((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const moveToTop = (idx: number) => {
+    setRules((prev) => {
+      const rule = prev[idx];
+      return [rule, ...prev.filter((_, i) => i !== idx)];
+    });
   };
 
   const updateRule = (idx: number, field: keyof CategoryRule, value: string) => {
@@ -178,15 +185,16 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
 
             <Card>
               <div className="space-y-3">
-                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-3 text-xs font-medium text-text-secondary px-1 border-b border-border pb-2">
+                <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 text-xs font-medium text-text-secondary px-1 border-b border-border pb-2">
                   <span>Keyword</span>
                   <span>Category</span>
                   <span>Subcategory</span>
                   <span className="w-9" />
+                  <span className="w-9" />
                 </div>
 
                 {rules.map((rule, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-3 items-center">
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 items-center">
                     <Input
                       placeholder="e.g. SWIGGY"
                       value={rule.keyword}
@@ -203,6 +211,14 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
                       onChange={(e) => updateRule(idx, 'subcategory', e.target.value)}
                       maxLength={100}
                     />
+                    <button
+                      onClick={() => moveToTop(idx)}
+                      disabled={idx === 0}
+                      title="Move to top"
+                      className="p-2 hover:bg-primary/10 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                    >
+                      <ArrowUpToLine className="h-4 w-4 text-text-secondary hover:text-primary" />
+                    </button>
                     <button
                       onClick={() => removeRule(idx)}
                       className="p-2 hover:bg-danger/10 rounded-lg transition-colors cursor-pointer"

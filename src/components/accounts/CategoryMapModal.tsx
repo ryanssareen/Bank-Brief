@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Plus, Trash2, Upload } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowUpToLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { CategoryRule } from '@/types';
 
@@ -30,6 +30,13 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
 
   const removeRule = (idx: number) => {
     setRules((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const moveToTop = (idx: number) => {
+    setRules((prev) => {
+      const rule = prev[idx];
+      return [rule, ...prev.filter((_, i) => i !== idx)];
+    });
   };
 
   const updateRule = (idx: number, field: keyof CategoryRule, value: string) => {
@@ -120,14 +127,15 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
 
         {rules.length > 0 && (
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs font-medium text-text-secondary px-1">
+            <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-2 text-xs font-medium text-text-secondary px-1">
               <span>Keyword</span>
               <span>Category</span>
               <span>Subcategory</span>
               <span />
+              <span />
             </div>
             {rules.map((rule, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-2 items-center">
                 <Input
                   placeholder="e.g. SWIGGY"
                   value={rule.keyword}
@@ -144,6 +152,14 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
                   onChange={(e) => updateRule(idx, 'subcategory', e.target.value)}
                   maxLength={100}
                 />
+                <button
+                  onClick={() => moveToTop(idx)}
+                  disabled={idx === 0}
+                  title="Move to top"
+                  className="p-1.5 hover:bg-primary/10 rounded transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                >
+                  <ArrowUpToLine className="h-4 w-4 text-text-secondary hover:text-primary" />
+                </button>
                 <button
                   onClick={() => removeRule(idx)}
                   className="p-1.5 hover:bg-bg-muted rounded transition-colors cursor-pointer"
