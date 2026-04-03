@@ -261,6 +261,17 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const isOverall = selectedIdx === -1;
   const summary = isOverall ? overallSummary : (currentStatement?.summary as StatementSummary | undefined);
 
+  const liveTopCategories = useMemo(() => {
+    const txs = summary?.transactions ?? [];
+    const catMap = new Map<string, number>();
+    for (const t of txs) {
+      if (t.type === 'debit' && t.category) {
+        catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
+      }
+    }
+    return [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount }));
+  }, [summary?.transactions]);
+
   const getTxFilterValue = useCallback((t: Transaction, key: FilterKey): string => {
     switch (key) {
       case 'date': return t.date;
@@ -738,7 +749,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                     </Card>
                     <Card>
                       <h3 className="font-semibold text-text-primary mb-4">Spending by Category</h3>
-                      <CategoryPieChart categories={summary.topCategories} />
+                      <CategoryPieChart categories={liveTopCategories} />
                     </Card>
                     <Card>
                       <MonthlyComparisonChart transactions={summary.transactions} />
