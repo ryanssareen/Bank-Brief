@@ -21,7 +21,6 @@ export interface CategoryRule {
   keyword: string;
   category: string;
   subcategory?: string;
-  disposition?: 'essential' | 'discretionary' | 'income' | 'transfer';
 }
 
 export interface Statement {
@@ -51,11 +50,13 @@ export interface StatementSummary {
 export interface Transaction {
   date: string;
   description: string;
+  debitAccountName?: string;
+  creditAccountName?: string;
   amount: number;
   type: 'credit' | 'debit';
   category: string;
   subcategory?: string;
-  disposition?: 'essential' | 'discretionary' | 'income' | 'transfer';
+  disposition?: '' | 'Ok' | 'To Be Settled';
 }
 
 export interface FixedDeposit {

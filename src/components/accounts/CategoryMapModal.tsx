@@ -15,8 +15,6 @@ interface CategoryMapModalProps {
   onSave: (rules: CategoryRule[]) => Promise<void>;
 }
 
-const DISPOSITIONS = ['essential', 'discretionary', 'income', 'transfer'] as const;
-
 export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }: CategoryMapModalProps) {
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,7 +25,7 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
   }, [initialRules]);
 
   const addRule = () => {
-    setRules((prev) => [...prev, { keyword: '', category: '', subcategory: '', disposition: 'discretionary' }]);
+    setRules((prev) => [...prev, { keyword: '', category: '', subcategory: '' }]);
   };
 
   const removeRule = (idx: number) => {
@@ -58,15 +56,12 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
             keyword: cols[0],
             category: cols[1] || 'Other',
             subcategory: cols[2] || '',
-            disposition: (DISPOSITIONS.includes(cols[3] as typeof DISPOSITIONS[number])
-              ? cols[3] as CategoryRule['disposition']
-              : 'discretionary'),
           });
         }
       }
 
       if (parsed.length === 0) {
-        toast.error('No valid rows found. Expected: keyword,category,subcategory,disposition');
+        toast.error('No valid rows found. Expected: keyword, category, subcategory');
         return;
       }
 
@@ -84,7 +79,6 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
         keyword: r.keyword,
         category: r.category,
         subcategory: r.subcategory || '',
-        disposition: r.disposition || 'discretionary',
       }));
     setLoading(true);
     try {
@@ -103,7 +97,7 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
       <div className="space-y-4">
         <p className="text-sm text-text-secondary">
           Define rules to automatically categorize transactions. If a transaction description
-          contains the keyword, it gets the mapped category, subcategory, and disposition.
+          contains the keyword, it gets the mapped category and subcategory.
         </p>
 
         <div className="flex gap-2">
@@ -126,15 +120,14 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
 
         {rules.length > 0 && (
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-2 text-xs font-medium text-text-secondary px-1">
+            <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs font-medium text-text-secondary px-1">
               <span>Keyword</span>
               <span>Category</span>
               <span>Subcategory</span>
-              <span>Disposition</span>
               <span />
             </div>
             {rules.map((rule, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-2 items-center">
+              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
                 <Input
                   placeholder="e.g. SWIGGY"
                   value={rule.keyword}
@@ -150,16 +143,6 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
                   value={rule.subcategory ?? ''}
                   onChange={(e) => updateRule(idx, 'subcategory', e.target.value)}
                 />
-                <select
-                  value={rule.disposition ?? 'discretionary'}
-                  onChange={(e) => updateRule(idx, 'disposition', e.target.value)}
-                  className="border border-border rounded-lg px-2 py-2 text-xs bg-bg-card text-text-primary
-                    focus:outline-none focus:ring-2 focus:ring-primary-light"
-                >
-                  {DISPOSITIONS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
                 <button
                   onClick={() => removeRule(idx)}
                   className="p-1.5 hover:bg-bg-muted rounded transition-colors cursor-pointer"
@@ -175,7 +158,7 @@ export function CategoryMapModal({ open, onClose, rules: initialRules, onSave }:
           <div className="text-center py-6 text-sm text-text-secondary">
             No rules yet. Add manually or import a CSV file.
             <br />
-            <span className="text-xs">CSV format: keyword, category, subcategory, disposition</span>
+            <span className="text-xs">CSV format: keyword, category, subcategory</span>
           </div>
         )}
 

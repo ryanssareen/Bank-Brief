@@ -29,7 +29,6 @@ function buildCategoryInstructions(categoryRules?: CategoryRule[]) {
       .map((r) => {
         let line = `If description contains "${r.keyword}" → category: "${r.category}"`;
         if (r.subcategory) line += `, subcategory: "${r.subcategory}"`;
-        if (r.disposition) line += `, disposition: "${r.disposition}"`;
         return line;
       })
       .join('\n');
@@ -62,7 +61,10 @@ The transactions are pre-parsed with exact amounts — do NOT change any amounts
 For each transaction, assign:
 - "category": one of the allowed categories
 - "subcategory": a more specific label (or empty string)
-- "disposition": "essential" | "discretionary" | "income" | "transfer"
+- "debitAccountName": the name/identifier of the account debited (extract from description if possible, or empty string)
+- "creditAccountName": the name/identifier of the account credited (extract from description if possible, or empty string)
+
+Do NOT assign a "disposition" field.
 
 Also provide up to 5 brief financial insights about spending patterns.
 
@@ -71,7 +73,7 @@ ${categoryInstructions}
 Return JSON:
 {
   "categories": [
-    { "idx": 0, "category": "string", "subcategory": "string", "disposition": "essential"|"discretionary"|"income"|"transfer" }
+    { "idx": 0, "category": "string", "subcategory": "string", "debitAccountName": "string", "creditAccountName": "string" }
   ],
   "insights": ["string"]
 }
@@ -94,7 +96,7 @@ ${JSON.stringify(txList, null, 2)}`;
   if (!content) throw new Error('No response from Groq');
 
   const result = JSON.parse(content) as {
-    categories: { idx: number; category: string; subcategory: string; disposition: string }[];
+    categories: { idx: number; category: string; subcategory: string; debitAccountName?: string; creditAccountName?: string }[];
     insights: string[];
   };
 
@@ -105,11 +107,13 @@ ${JSON.stringify(txList, null, 2)}`;
     return {
       date: t.date,
       description: t.description,
+      debitAccountName: cat?.debitAccountName ?? '',
+      creditAccountName: cat?.creditAccountName ?? '',
       amount: t.amount,
       type: t.type,
       category: cat?.category ?? 'Other',
       subcategory: cat?.subcategory ?? '',
-      disposition: cat?.disposition ?? (t.type === 'credit' ? 'income' : 'discretionary'),
+      disposition: '' as const,
     };
   });
 
@@ -148,6 +152,7 @@ CRITICAL RULES:
 - NEVER use arithmetic expressions — only final computed values
 - Dates in the statement may be DD/MM/YYYY format — convert to YYYY-MM-DD correctly (e.g. 01/02/2025 = February 1st = 2025-02-01, NOT January 2nd)
 - If the statement provides Opening Balance, Closing Balance, Total Deposits, Total Withdrawals in a header row, use those exact values
+- Do NOT assign a "disposition" field to transactions
 
 Return a JSON object with EXACTLY this structure:
 {
@@ -167,11 +172,12 @@ Return a JSON object with EXACTLY this structure:
     {
       "date": "YYYY-MM-DD",
       "description": "string",
+      "debitAccountName": "string or empty",
+      "creditAccountName": "string or empty",
       "amount": number,
       "type": "credit" | "debit",
       "category": "string",
-      "subcategory": "string or empty string",
-      "disposition": "essential" | "discretionary" | "income" | "transfer"
+      "subcategory": "string or empty string"
     }
   ]
 }

@@ -208,6 +208,28 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId, statements.length]
   );
 
+  const handleUpdateTransaction = useCallback(
+    async (txIdx: number, field: keyof Transaction, value: string) => {
+      if (!user?.uid || isOverall || !currentStatement) return;
+      const sum = currentStatement.summary as StatementSummary | undefined;
+      if (!sum?.transactions) return;
+
+      const updatedTx = sum.transactions.map((t, i) =>
+        i === txIdx ? { ...t, [field]: value } : t
+      );
+
+      try {
+        await updateDoc(
+          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
+          { 'summary.transactions': updatedTx }
+        );
+      } catch {
+        toast.error('Failed to update transaction');
+      }
+    },
+    [user?.uid, accountId, isOverall, currentStatement]
+  );
+
   const deduplicateStatements = useCallback(
     async () => {
       if (!user?.uid || statements.length < 2) return;
@@ -453,6 +475,8 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           <tr className="border-b border-border text-left">
                             <th className="px-4 py-3 font-medium text-text-secondary">Date</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Debit A/C</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Credit A/C</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
@@ -464,22 +488,55 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <tr key={i} className="border-b border-border hover:bg-bg-muted">
                               <td className="px-4 py-3 whitespace-nowrap">{t.date}</td>
                               <td className="px-4 py-3">{t.description}</td>
-                              <td className="px-4 py-3">
-                                <Badge>{t.category}</Badge>
+                              <td className="px-4 py-3 text-text-secondary text-xs">
+                                {t.debitAccountName || '—'}
                               </td>
-                              <td className="px-4 py-3 text-text-secondary">
-                                {t.subcategory || '—'}
+                              <td className="px-4 py-3 text-text-secondary text-xs">
+                                {t.creditAccountName || '—'}
                               </td>
                               <td className="px-4 py-3">
-                                {t.disposition ? (
-                                  <Badge variant={
-                                    t.disposition === 'essential' ? 'warning' :
-                                    t.disposition === 'income' ? 'success' :
-                                    t.disposition === 'transfer' ? 'info' : 'default'
-                                  }>
-                                    {t.disposition}
-                                  </Badge>
-                                ) : '—'}
+                                {!isOverall ? (
+                                  <input
+                                    type="text"
+                                    value={t.category}
+                                    onChange={(e) => handleUpdateTransaction(i, 'category', e.target.value)}
+                                    className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                  />
+                                ) : (
+                                  <Badge>{t.category}</Badge>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {!isOverall ? (
+                                  <input
+                                    type="text"
+                                    value={t.subcategory ?? ''}
+                                    onChange={(e) => handleUpdateTransaction(i, 'subcategory', e.target.value)}
+                                    className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                    placeholder="—"
+                                  />
+                                ) : (
+                                  <span className="text-text-secondary">{t.subcategory || '—'}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {!isOverall ? (
+                                  <select
+                                    value={t.disposition ?? ''}
+                                    onChange={(e) => handleUpdateTransaction(i, 'disposition', e.target.value)}
+                                    className="px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                  >
+                                    <option value="">—</option>
+                                    <option value="Ok">Ok</option>
+                                    <option value="To Be Settled">To Be Settled</option>
+                                  </select>
+                                ) : (
+                                  t.disposition ? (
+                                    <Badge variant={t.disposition === 'Ok' ? 'success' : 'warning'}>
+                                      {t.disposition}
+                                    </Badge>
+                                  ) : '—'
+                                )}
                               </td>
                               <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
                                 ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>

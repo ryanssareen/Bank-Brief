@@ -1,11 +1,12 @@
 import type { Transaction, StatementSummary } from '@/types';
-import { formatINR } from './formatCurrency';
 
 export function exportTransactionsCSV(transactions: Transaction[], accountName: string) {
-  const headers = ['Date', 'Description', 'Category', 'Subcategory', 'Disposition', 'Type', 'Amount'];
+  const headers = ['Date', 'Description', 'Debit Account', 'Credit Account', 'Category', 'Subcategory', 'Disposition', 'Type', 'Amount'];
   const rows = transactions.map((t) => [
     t.date,
     `"${t.description.replace(/"/g, '""')}"`,
+    t.debitAccountName || '',
+    t.creditAccountName || '',
     t.category,
     t.subcategory || '',
     t.disposition || '',
@@ -32,10 +33,12 @@ export function exportSummaryCSV(summary: StatementSummary, accountName: string)
     'Insights',
     ...summary.insights.map((i) => `"${i.replace(/"/g, '""')}"`),
     '',
-    ...['Date,Description,Category,Subcategory,Disposition,Type,Amount'],
+    ...['Date,Description,Debit Account,Credit Account,Category,Subcategory,Disposition,Type,Amount'],
     ...summary.transactions.map((t) => [
       t.date,
       `"${t.description.replace(/"/g, '""')}"`,
+      t.debitAccountName || '',
+      t.creditAccountName || '',
       t.category,
       t.subcategory || '',
       t.disposition || '',
