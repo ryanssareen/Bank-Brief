@@ -38,6 +38,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [catSuggestion, setCatSuggestion] = useState<{
+    keyword: string;
+    category: string;
+    subcategory: string;
+    description: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -198,6 +204,19 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId, statements.length]
   );
 
+  const extractKeyword = useCallback((description: string): string => {
+    const stopWords = new Set([
+      'dr', 'cr', 'imps', 'neft', 'upi', 'rtgs', 'p2a', 'p2m', 'ach',
+      'the', 'to', 'from', 'for', 'and', 'of', 'in', 'a', 'an', 'no',
+      'trf', 'ref', 'txn', 'chrg', 'charges', 'charge',
+    ]);
+    const words = description
+      .replace(/[^a-zA-Z\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w.toLowerCase()));
+    return words[0]?.toUpperCase() ?? '';
+  }, []);
+
   const handleUpdateTransaction = useCallback(
     async (txIdx: number, field: keyof Transaction, value: string) => {
       if (!user?.uid || isOverall || !currentStatement) return;
@@ -213,12 +232,55 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
           { 'summary.transactions': updatedTx }
         );
+
+        if ((field === 'category' || field === 'subcategory') && value) {
+          const tx = updatedTx[txIdx];
+          const cat = tx.category;
+          const sub = tx.subcategory ?? '';
+          if (!cat) return;
+
+          const keyword = extractKeyword(tx.description);
+          if (!keyword) return;
+
+          const existingRules = account?.categoryMap ?? [];
+          const alreadyMapped = existingRules.some(
+            (r) => r.keyword.toLowerCase() === keyword.toLowerCase()
+          );
+          if (alreadyMapped) return;
+
+          setCatSuggestion({
+            keyword,
+            category: cat,
+            subcategory: sub,
+            description: tx.description,
+          });
+        }
       } catch {
         toast.error('Failed to update transaction');
       }
     },
-    [user?.uid, accountId, isOverall, currentStatement]
+    [user?.uid, accountId, isOverall, currentStatement, account?.categoryMap, extractKeyword]
   );
+
+  const handleAcceptSuggestion = useCallback(async () => {
+    if (!user?.uid || !catSuggestion) return;
+    const existingRules = account?.categoryMap ?? [];
+    const newRules = [...existingRules, {
+      keyword: catSuggestion.keyword,
+      category: catSuggestion.category,
+      subcategory: catSuggestion.subcategory,
+    }];
+    try {
+      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
+        categoryMap: newRules,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success(`Added "${catSuggestion.keyword}" → "${catSuggestion.category}" to category map`);
+    } catch {
+      toast.error('Failed to add rule');
+    }
+    setCatSuggestion(null);
+  }, [user?.uid, accountId, account?.categoryMap, catSuggestion]);
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
 
@@ -431,7 +493,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                       Update Category &amp; Subcategory
                     </Button>
                     <div className="absolute top-full mt-1 left-0 w-64 p-2 bg-bg-card border border-border rounded-lg shadow-lg text-xs text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                      Updates done for transactions with no Disposition based on Category Map defined
+                      Updates done for transactions with no Disposition, based on Category Map defined
                     </div>
                   </div>
                 )}
@@ -607,6 +669,36 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </Card>
+                )}
+
+                {catSuggestion && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-text-primary">
+                          Add to Category Map?
+                        </p>
+                        <p className="text-xs text-text-secondary mt-1">
+                          Keyword <span className="font-semibold text-text-primary">&quot;{catSuggestion.keyword}&quot;</span> →
+                          Category <span className="font-semibold text-text-primary">&quot;{catSuggestion.category}&quot;</span>
+                          {catSuggestion.subcategory && (
+                            <>, Subcategory <span className="font-semibold text-text-primary">&quot;{catSuggestion.subcategory}&quot;</span></>
+                          )}
+                        </p>
+                        <p className="text-xs text-text-secondary mt-0.5">
+                          From: {catSuggestion.description}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleAcceptSuggestion}>
+                          Add Rule
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setCatSuggestion(null)}>
+                          Dismiss
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 )}
