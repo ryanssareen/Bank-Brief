@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { AccountSummary } from '@/components/accounts/AccountSummary';
 import { EditAccountModal } from '@/components/accounts/EditAccountModal';
-import { CategoryMapModal } from '@/components/accounts/CategoryMapModal';
+
 import { FileUploader } from '@/components/upload/FileUploader';
 import { SpendingBarChart } from '@/components/charts/SpendingBarChart';
 import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
@@ -20,10 +20,11 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2 } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
-import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
+import type { Account, Statement, StatementSummary, Transaction } from '@/types';
 
 export default function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: accountId } = use(params);
@@ -34,7 +35,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [showCategoryMap, setShowCategoryMap] = useState(false);
+
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
 
@@ -179,17 +180,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     [user?.uid, accountId]
   );
 
-  const handleCategoryMapSave = useCallback(
-    async (rules: CategoryRule[]) => {
-      if (!user?.uid) return;
-      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
-        categoryMap: rules,
-        updatedAt: serverTimestamp(),
-      });
-    },
-    [user?.uid, accountId]
-  );
-
   const handleDeleteStatement = useCallback(
     async (statementId: string) => {
       if (!user?.uid) return;
@@ -228,6 +218,63 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       }
     },
     [user?.uid, accountId, isOverall, currentStatement]
+  );
+
+  const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
+
+  const handleApplyCategoryMap = useCallback(
+    async () => {
+      if (!user?.uid || !account?.categoryMap?.length) {
+        toast.error('No category map defined. Add rules first.');
+        return;
+      }
+
+      setApplyingCategoryMap(true);
+      try {
+        let updated = 0;
+        for (const stmt of statements) {
+          const sum = stmt.summary as StatementSummary | undefined;
+          if (!sum?.transactions?.length) continue;
+
+          let changed = false;
+          const updatedTx = sum.transactions.map((t) => {
+            if (t.disposition) return t;
+
+            let matchedCategory = '';
+            let matchedSubcategory = '';
+            const descLower = t.description.toLowerCase();
+
+            for (const rule of account.categoryMap!) {
+              if (descLower.includes(rule.keyword.toLowerCase())) {
+                matchedCategory = rule.category;
+                matchedSubcategory = rule.subcategory ?? '';
+                break;
+              }
+            }
+
+            if (matchedCategory !== t.category || matchedSubcategory !== (t.subcategory ?? '')) {
+              changed = true;
+            }
+
+            return { ...t, category: matchedCategory, subcategory: matchedSubcategory };
+          });
+
+          if (changed) {
+            await updateDoc(
+              doc(db, 'users', user.uid, 'accounts', accountId, 'statements', stmt.id),
+              { 'summary.transactions': updatedTx }
+            );
+            updated++;
+          }
+        }
+        toast.success(`Updated ${updated} statement(s) based on category map`);
+      } catch {
+        toast.error('Failed to apply category map');
+      } finally {
+        setApplyingCategoryMap(false);
+      }
+    },
+    [user?.uid, accountId, account?.categoryMap, statements]
   );
 
   const deduplicateStatements = useCallback(
@@ -366,10 +413,28 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button variant="secondary" size="md" onClick={() => setShowCategoryMap(true)}>
-                  <ListFilter className="h-4 w-4" />
-                  Category Map
-                </Button>
+                <Link href={`/accounts/${accountId}/category-map`}>
+                  <Button variant="secondary" size="md">
+                    <ListFilter className="h-4 w-4" />
+                    Category Map
+                  </Button>
+                </Link>
+                {summary && (
+                  <div className="relative group">
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={handleApplyCategoryMap}
+                      loading={applyingCategoryMap}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Update Category &amp; Subcategory
+                    </Button>
+                    <div className="absolute top-full mt-1 left-0 w-64 p-2 bg-bg-card border border-border rounded-lg shadow-lg text-xs text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                      Updates done for transactions with no Disposition based on Category Map defined
+                    </div>
+                  </div>
+                )}
                 <Button onClick={() => setShowUpload(true)} size="md">
                   <Upload className="h-4 w-4" />
                   Upload Statement
@@ -579,12 +644,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               onSave={handleEditSave}
             />
 
-            <CategoryMapModal
-              open={showCategoryMap}
-              onClose={() => setShowCategoryMap(false)}
-              rules={account?.categoryMap ?? []}
-              onSave={handleCategoryMapSave}
-            />
           </>
         )}
       </div>
