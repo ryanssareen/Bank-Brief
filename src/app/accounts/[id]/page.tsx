@@ -113,6 +113,14 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>({
+    date: new Set(),
+    type: new Set(),
+    keyword: new Set(),
+    category: new Set(),
+    subcategory: new Set(),
+    disposition: new Set(),
+  });
   const [catSuggestion, setCatSuggestion] = useState<{
     keyword: string;
     category: string;
@@ -399,14 +407,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
   const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
-  const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>({
-    date: new Set(),
-    type: new Set(),
-    keyword: new Set(),
-    category: new Set(),
-    subcategory: new Set(),
-    disposition: new Set(),
-  });
 
   const handleApplyCategoryMap = useCallback(
     async () => {
