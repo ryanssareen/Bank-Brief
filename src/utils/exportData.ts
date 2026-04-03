@@ -1,17 +1,15 @@
 import type { Transaction, StatementSummary } from '@/types';
 
 export function exportTransactionsCSV(transactions: Transaction[], accountName: string) {
-  const headers = ['Date', 'Description', 'Debit Account', 'Credit Account', 'Category', 'Subcategory', 'Disposition', 'Type', 'Amount'];
+  const headers = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Subcategory', 'Disposition'];
   const rows = transactions.map((t) => [
     t.date,
     `"${t.description.replace(/"/g, '""')}"`,
-    t.debitAccountName || '',
-    t.creditAccountName || '',
+    t.type === 'debit' ? `-${t.amount}` : `${t.amount}`,
+    t.type,
     t.category,
     t.subcategory || '',
     t.disposition || '',
-    t.type,
-    t.type === 'debit' ? `-${t.amount}` : `${t.amount}`,
   ]);
 
   const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -33,17 +31,15 @@ export function exportSummaryCSV(summary: StatementSummary, accountName: string)
     'Insights',
     ...summary.insights.map((i) => `"${i.replace(/"/g, '""')}"`),
     '',
-    ...['Date,Description,Debit Account,Credit Account,Category,Subcategory,Disposition,Type,Amount'],
+    ...['Date,Description,Amount,Type,Category,Subcategory,Disposition'],
     ...summary.transactions.map((t) => [
       t.date,
       `"${t.description.replace(/"/g, '""')}"`,
-      t.debitAccountName || '',
-      t.creditAccountName || '',
+      t.type === 'debit' ? `-${t.amount}` : `${t.amount}`,
+      t.type,
       t.category,
       t.subcategory || '',
       t.disposition || '',
-      t.type,
-      t.type === 'debit' ? `-${t.amount}` : `${t.amount}`,
     ].join(',')),
   ];
 

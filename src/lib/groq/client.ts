@@ -61,8 +61,6 @@ The transactions are pre-parsed with exact amounts — do NOT change any amounts
 For each transaction, assign:
 - "category": one of the allowed categories
 - "subcategory": a more specific label (or empty string)
-- "debitAccountName": the name/identifier of the account debited (extract from description if possible, or empty string)
-- "creditAccountName": the name/identifier of the account credited (extract from description if possible, or empty string)
 
 Do NOT assign a "disposition" field.
 
@@ -73,7 +71,7 @@ ${categoryInstructions}
 Return JSON:
 {
   "categories": [
-    { "idx": 0, "category": "string", "subcategory": "string", "debitAccountName": "string", "creditAccountName": "string" }
+    { "idx": 0, "category": "string", "subcategory": "string" }
   ],
   "insights": ["string"]
 }
@@ -96,7 +94,7 @@ ${JSON.stringify(txList, null, 2)}`;
   if (!content) throw new Error('No response from Groq');
 
   const result = JSON.parse(content) as {
-    categories: { idx: number; category: string; subcategory: string; debitAccountName?: string; creditAccountName?: string }[];
+    categories: { idx: number; category: string; subcategory: string }[];
     insights: string[];
   };
 
@@ -107,8 +105,6 @@ ${JSON.stringify(txList, null, 2)}`;
     return {
       date: t.date,
       description: t.description,
-      debitAccountName: cat?.debitAccountName ?? '',
-      creditAccountName: cat?.creditAccountName ?? '',
       amount: t.amount,
       type: t.type,
       category: cat?.category ?? 'Other',
@@ -172,8 +168,6 @@ Return a JSON object with EXACTLY this structure:
     {
       "date": "YYYY-MM-DD",
       "description": "string",
-      "debitAccountName": "string or empty",
-      "creditAccountName": "string or empty",
       "amount": number,
       "type": "credit" | "debit",
       "category": "string",

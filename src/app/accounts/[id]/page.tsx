@@ -475,12 +475,11 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           <tr className="border-b border-border text-left">
                             <th className="px-4 py-3 font-medium text-text-secondary">Date</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Debit A/C</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Credit A/C</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
+                            <th className="px-4 py-3 font-medium text-text-secondary">Account Name</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Category</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Subcategory</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">Disposition</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary text-right">Amount</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -488,11 +487,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <tr key={i} className="border-b border-border hover:bg-bg-muted">
                               <td className="px-4 py-3 whitespace-nowrap">{t.date}</td>
                               <td className="px-4 py-3">{t.description}</td>
-                              <td className="px-4 py-3 text-text-secondary text-xs">
-                                {t.debitAccountName || '—'}
+                              <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
+                                ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>
+                                {t.type === 'credit' ? '+' : '-'}{formatINR(t.amount)}
                               </td>
                               <td className="px-4 py-3 text-text-secondary text-xs">
-                                {t.creditAccountName || '—'}
+                                {account?.name || '—'}
                               </td>
                               <td className="px-4 py-3">
                                 {!isOverall ? (
@@ -537,10 +537,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                     </Badge>
                                   ) : '—'
                                 )}
-                              </td>
-                              <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
-                                ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>
-                                {t.type === 'credit' ? '+' : '-'}{formatINR(t.amount)}
                               </td>
                             </tr>
                           ))}
