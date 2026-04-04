@@ -22,9 +22,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
 import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
-import type { Account, Statement, StatementSummary, Transaction } from '@/types';
+import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
 type FilterKey = 'date' | 'type' | 'accountName' | 'keyword' | 'category' | 'subcategory' | 'disposition';
 
@@ -114,6 +115,7 @@ function ColumnFilterDropdown({
 export default function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: accountId } = use(params);
   const { user } = useAuth();
+  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [statements, setStatements] = useState<Statement[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -124,6 +126,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>(emptyFilters);
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
   const [catSuggestion, setCatSuggestion] = useState<{
     keyword: string;
     category: string;
@@ -133,6 +136,16 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     if (!user?.uid) return;
+
+    const userUnsub = onSnapshot(
+      doc(db, 'users', user.uid),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setCategoryRules((data.categoryMap as CategoryRule[]) ?? []);
+        }
+      }
+    );
 
     const accountUnsub = onSnapshot(
       doc(db, 'users', user.uid, 'accounts', accountId),
@@ -163,6 +176,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     );
 
     return () => {
+      userUnsub();
       accountUnsub();
       statementsUnsub();
     };
@@ -265,8 +279,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     const txs = summary?.transactions ?? [];
     const catMap = new Map<string, number>();
     for (const t of txs) {
-      if (t.type === 'debit' && t.category) {
-        catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
+      if (t.type === 'debit') {
+        const cat = t.category || 'Uncategorized';
+        catMap.set(cat, (catMap.get(cat) ?? 0) + t.amount);
       }
     }
     return [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount }));
@@ -392,7 +407,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           const keyword = extractKeyword(tx.description);
           if (!keyword) return;
 
-          const existingRules = account?.categoryMap ?? [];
+          const existingRules = categoryRules ?? [];
           const alreadyMapped = existingRules.some(
             (r) => r.keyword.toLowerCase() === keyword.toLowerCase()
           );
@@ -409,19 +424,19 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         toast.error('Failed to update transaction');
       }
     },
-    [user?.uid, accountId, isOverall, currentStatement, account?.categoryMap, extractKeyword]
+    [user?.uid, accountId, isOverall, currentStatement, categoryRules, extractKeyword]
   );
 
   const handleAcceptSuggestion = useCallback(async () => {
     if (!user?.uid || !catSuggestion) return;
-    const existingRules = account?.categoryMap ?? [];
+    const existingRules = categoryRules ?? [];
     const newRules = [...existingRules, {
       keyword: catSuggestion.keyword,
       category: catSuggestion.category,
       subcategory: catSuggestion.subcategory,
     }];
     try {
-      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
+      await updateDoc(doc(db, 'users', user.uid), {
         categoryMap: newRules,
         updatedAt: serverTimestamp(),
       });
@@ -430,21 +445,21 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       toast.error('Failed to add rule');
     }
     setCatSuggestion(null);
-  }, [user?.uid, accountId, account?.categoryMap, catSuggestion]);
+  }, [user?.uid, accountId, categoryRules, catSuggestion]);
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
   const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
 
   const handleApplyCategoryMap = useCallback(
     async () => {
-      if (!user?.uid || !account?.categoryMap?.length) {
+      if (!user?.uid || !categoryRules?.length) {
         toast.error('No category map defined. Add rules first.');
         return;
       }
 
       setApplyingCategoryMap(true);
       try {
-        const rules = account.categoryMap!;
+        const rules = categoryRules;
         let updated = 0;
         let totalMatched = 0;
 
@@ -482,8 +497,23 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         setApplyingCategoryMap(false);
       }
     },
-    [user?.uid, accountId, account?.categoryMap, statements]
+    [user?.uid, accountId, categoryRules, statements]
   );
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!user?.uid) return;
+    if (!confirm('Are you sure you want to delete this account? All statements will be permanently lost.')) return;
+    try {
+      for (const stmt of statements) {
+        await deleteDoc(doc(db, 'users', user.uid, 'accounts', accountId, 'statements', stmt.id));
+      }
+      await deleteDoc(doc(db, 'users', user.uid, 'accounts', accountId));
+      toast.success('Account deleted');
+      router.push('/accounts');
+    } catch {
+      toast.error('Failed to delete account');
+    }
+  }, [user?.uid, accountId, statements, router]);
 
   const handleBulkDisposition = useCallback(
     async (disposition: '' | 'Ok' | 'To Be Settled') => {
@@ -631,6 +661,13 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                     title="Edit account"
                   >
                     <Pencil className="h-4 w-4 text-text-secondary" />
+                  </button>
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="p-1.5 rounded-lg hover:bg-danger/10 transition-colors cursor-pointer"
+                    title="Delete account"
+                  >
+                    <Trash2 className="h-4 w-4 text-text-secondary hover:text-danger" />
                   </button>
                 </div>
                 <div className="flex items-center gap-2 mt-1">

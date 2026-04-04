@@ -12,12 +12,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { Plus, Trash2, Upload, ArrowLeft, Download, ArrowUpToLine } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import type { Account, CategoryRule } from '@/types';
+import type { CategoryRule } from '@/types';
 
 export default function CategoryMapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: accountId } = use(params);
   const { user } = useAuth();
-  const [account, setAccount] = useState<Account | null>(null);
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,18 +25,17 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     if (!user?.uid) return;
     const unsub = onSnapshot(
-      doc(db, 'users', user.uid, 'accounts', accountId),
+      doc(db, 'users', user.uid),
       (snap) => {
         if (snap.exists()) {
-          const data = { id: snap.id, ...snap.data() } as Account;
-          setAccount(data);
-          setRules(data.categoryMap ?? []);
+          const data = snap.data();
+          setRules((data.categoryMap as CategoryRule[]) ?? []);
         }
         setLoading(false);
       }
     );
     return unsub;
-  }, [user?.uid, accountId]);
+  }, [user?.uid]);
 
   const addRule = () => {
     setRules((prev) => [...prev, { keyword: '', category: '', subcategory: '' }]);
@@ -105,7 +103,7 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${account?.name ?? 'account'}-category-map.csv`;
+    a.download = 'category-map.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -123,7 +121,7 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
       }));
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid, 'accounts', accountId), {
+      await updateDoc(doc(db, 'users', user.uid), {
         categoryMap: valid,
         updatedAt: serverTimestamp(),
       });
@@ -133,7 +131,7 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
     } finally {
       setSaving(false);
     }
-  }, [user?.uid, accountId, rules]);
+  }, [user?.uid, rules]);
 
   return (
     <AppShell>
@@ -155,7 +153,7 @@ export default function CategoryMapPage({ params }: { params: Promise<{ id: stri
                 <div>
                   <h1 className="text-2xl font-semibold text-text-primary">Category Map</h1>
                   <p className="text-sm text-text-secondary mt-0.5">
-                    {account?.name} &middot; {account?.bankName}
+                    Shared across all accounts
                   </p>
                 </div>
               </div>

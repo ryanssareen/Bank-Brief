@@ -12,7 +12,6 @@ export interface Account {
   accountNumber?: string;
   accountType: 'savings' | 'current' | 'salary';
   currency: string;
-  categoryMap?: CategoryRule[];
   createdAt: Date;
   updatedAt: Date;
 }

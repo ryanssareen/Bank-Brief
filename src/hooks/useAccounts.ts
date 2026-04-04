@@ -58,7 +58,7 @@ export function useAccounts(uid: string | undefined) {
   );
 
   const updateAccount = useCallback(
-    async (accountId: string, data: Partial<Pick<Account, 'name' | 'bankName' | 'accountNumber' | 'accountType' | 'categoryMap'>>) => {
+    async (accountId: string, data: Partial<Pick<Account, 'name' | 'bankName' | 'accountNumber' | 'accountType'>>) => {
       if (!uid) return;
       await updateDoc(doc(db, 'users', uid, 'accounts', accountId), {
         ...data,
