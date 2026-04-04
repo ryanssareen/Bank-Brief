@@ -140,6 +140,84 @@ function extractTransactionsFromSheet(sheet: XLSX.WorkSheet): ParsedStatement | 
   return { openingBalance, closingBalance, totalDeposits, totalWithdrawals, transactions };
 }
 
+function extractTransactionsFromText(text: string): ParsedStatement | null {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const dateRe = /^(\d{2}\/\d{2}\/\d{4})/;
+  const amountRe = /₹?\s*([\d,]+\.\d{2})/g;
+
+  const transactions: ParsedTransaction[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const dateMatch = line.match(dateRe);
+    if (!dateMatch) continue;
+
+    let block = line;
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j];
+      if (dateRe.test(next)) break;
+      const lower = next.toLowerCase();
+      if (lower.includes('registered office') || lower.includes('page') || (lower.includes('transaction') && lower.includes('date'))) break;
+      block += ' ' + next;
+      i = j;
+    }
+
+    const date = parseDate(dateMatch[1]);
+    const amounts: number[] = [];
+    let m: RegExpExecArray | null;
+    const re = new RegExp(amountRe.source, 'g');
+    while ((m = re.exec(block)) !== null) {
+      const val = tryNumber(m[1]);
+      if (val !== null) amounts.push(val);
+    }
+
+    if (amounts.length < 2) continue;
+
+    const balance = amounts[amounts.length - 1];
+    const prevBalance = transactions.length > 0
+      ? transactions[transactions.length - 1].balance
+      : null;
+
+    if (prevBalance !== null) {
+      const diff = Math.round((balance - prevBalance) * 100) / 100;
+      if (diff > 0) {
+        transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount: diff, type: 'credit', balance });
+      } else if (diff < 0) {
+        transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount: Math.abs(diff), type: 'debit', balance });
+      }
+    } else {
+      const amount = amounts[amounts.length - 2];
+      const desc = block.toLowerCase();
+      const isDebit = desc.includes('withdraw') || desc.includes('dr-') || desc.includes('trf to') ||
+        desc.includes('annual chrg') || desc.includes('chrg') || desc.includes('renewal');
+      const isCredit = desc.includes('deposit') || desc.includes('cr-') || desc.includes('neft') ||
+        desc.includes('int.pd') || desc.includes('closure proceeds');
+
+      let type: 'credit' | 'debit';
+      if (isDebit && !isCredit) {
+        type = 'debit';
+      } else if (isCredit && !isDebit) {
+        type = 'credit';
+      } else {
+        type = amounts.length >= 3 ? 'debit' : 'credit';
+      }
+      transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount, type, balance });
+    }
+  }
+
+  if (transactions.length === 0) return null;
+
+  const first = transactions[0];
+  const openingBalance = first.type === 'debit'
+    ? first.balance + first.amount
+    : first.balance - first.amount;
+  const closingBalance = transactions[transactions.length - 1].balance;
+  const totalDeposits = transactions.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+  const totalWithdrawals = transactions.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+
+  return { openingBalance, closingBalance, totalDeposits, totalWithdrawals, transactions };
+}
+
 export async function parseDocument(
   buffer: Buffer,
   fileType: string
@@ -149,7 +227,8 @@ export async function parseDocument(
       throw new Error('Invalid file: this doesn\'t appear to be a real PDF. Please re-export from the original app as PDF.');
     }
     const result = await pdfParse(buffer);
-    return { extractedText: result.text };
+    const parsed = extractTransactionsFromText(result.text);
+    return { extractedText: result.text, parsed: parsed ?? undefined };
   }
 
   if (fileType === 'csv') {
