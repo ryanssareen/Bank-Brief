@@ -464,7 +464,48 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       toast.error('Failed to add rule');
     }
     setCatSuggestion(null);
-  }, [user?.uid, accountId, categoryRules, catSuggestion]);
+  }, [user?.uid, categoryRules, catSuggestion]);
+
+  const handleAcceptAndApply = useCallback(async () => {
+    if (!user?.uid || !catSuggestion) return;
+    const existingRules = categoryRules ?? [];
+    const newRules = [...existingRules, {
+      keyword: catSuggestion.keyword,
+      category: catSuggestion.category,
+      subcategory: catSuggestion.subcategory,
+    }];
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        categoryMap: newRules,
+        updatedAt: serverTimestamp(),
+      });
+
+      let totalMatched = 0;
+      for (const stmt of statements) {
+        const sum = stmt.summary as StatementSummary | undefined;
+        if (!sum?.transactions?.length) continue;
+        const updatedTx = sum.transactions.map((t) => {
+          if (t.disposition) return t;
+          const descLower = t.description.toLowerCase();
+          for (const rule of newRules) {
+            if (descLower.includes(rule.keyword.toLowerCase())) {
+              totalMatched++;
+              return { ...t, category: rule.category, subcategory: rule.subcategory ?? '', matchedKeyword: rule.keyword };
+            }
+          }
+          return { ...t, category: '', subcategory: '', matchedKeyword: '' };
+        });
+        await updateDoc(
+          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', stmt.id),
+          { 'summary.transactions': updatedTx }
+        );
+      }
+      toast.success(`Added rule & updated ${totalMatched} transactions`);
+    } catch {
+      toast.error('Failed to add rule');
+    }
+    setCatSuggestion(null);
+  }, [user?.uid, accountId, categoryRules, catSuggestion, statements]);
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
   const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
@@ -1064,7 +1105,10 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                         </p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={handleAcceptSuggestion}>
+                        <Button size="sm" onClick={handleAcceptAndApply}>
+                          Update &amp; Add Rule
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={handleAcceptSuggestion}>
                           Add Rule
                         </Button>
                         <Button size="sm" variant="secondary" onClick={() => setCatSuggestion(null)}>
