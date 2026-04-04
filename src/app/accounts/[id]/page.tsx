@@ -562,7 +562,46 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const deduplicateStatements = useCallback(
     async () => {
-      if (!user?.uid || statements.length < 2) return;
+      if (!user?.uid || statements.length === 0) return;
+
+      for (const s of statements) {
+        const sum = s.summary as StatementSummary | undefined;
+        if (!sum?.transactions?.length) continue;
+        const txMap = new Map<string, Transaction>();
+        for (const t of sum.transactions) {
+          const key = `${t.date}|${t.amount}|${t.type}`;
+          const existing = txMap.get(key);
+          if (!existing || (t.category && !existing.category) || (t.disposition && !existing.disposition)) {
+            txMap.set(key, t);
+          }
+        }
+        if (txMap.size < sum.transactions.length) {
+          const cleanTx = [...txMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+          const totalCredits = cleanTx.filter((t) => t.type === 'credit').reduce((acc, t) => acc + t.amount, 0);
+          const totalDebits = cleanTx.filter((t) => t.type === 'debit').reduce((acc, t) => acc + t.amount, 0);
+          let openBal = sum.openingBalance;
+          let closeBal = sum.closingBalance;
+          if (cleanTx.length > 0 && cleanTx[0].balance != null) {
+            const firstTx = cleanTx[0];
+            openBal = firstTx.type === 'debit'
+              ? firstTx.balance! + firstTx.amount
+              : firstTx.balance! - firstTx.amount;
+            closeBal = cleanTx[cleanTx.length - 1].balance ?? closeBal;
+          }
+          await updateDoc(
+            doc(db, 'users', user.uid, 'accounts', accountId, 'statements', s.id),
+            {
+              'summary.transactions': cleanTx,
+              'summary.totalCredits': totalCredits,
+              'summary.totalDebits': totalDebits,
+              'summary.openingBalance': openBal,
+              'summary.closingBalance': closeBal,
+            }
+          );
+        }
+      }
+
+      if (statements.length < 2) return;
 
       const statementsWithKeys = statements
         .filter((s) => s.summary && (s.summary as StatementSummary).transactions?.length)
@@ -641,7 +680,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   );
 
   useEffect(() => {
-    if (statements.length < 2) return;
+    if (statements.length === 0) return;
     deduplicateStatements();
   }, [statements.length, deduplicateStatements]);
 
