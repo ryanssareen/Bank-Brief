@@ -403,22 +403,48 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const handleUpdateTransaction = useCallback(
     async (txIdx: number, field: keyof Transaction, value: string) => {
-      if (!user?.uid || isOverall || !currentStatement) return;
-      const sum = currentStatement.summary as StatementSummary | undefined;
-      if (!sum?.transactions) return;
+      if (!user?.uid) return;
 
-      const updatedTx = sum.transactions.map((t, i) =>
-        i === txIdx ? { ...t, [field]: value } : t
+      const txToUpdate = summary?.transactions?.[txIdx];
+      if (!txToUpdate) return;
+
+      let targetStmt: Statement | undefined;
+      let targetTxIdx = -1;
+
+      if (!isOverall && currentStatement) {
+        targetStmt = currentStatement;
+        targetTxIdx = txIdx;
+      } else {
+        const txKey = `${txToUpdate.date}|${txToUpdate.amount}|${txToUpdate.type}|${txToUpdate.balance ?? ''}`;
+        for (const s of statements) {
+          const sum = s.summary as StatementSummary | undefined;
+          if (!sum?.transactions) continue;
+          const idx = sum.transactions.findIndex((t) =>
+            `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}` === txKey
+          );
+          if (idx !== -1) {
+            targetStmt = s;
+            targetTxIdx = idx;
+            break;
+          }
+        }
+      }
+
+      if (!targetStmt || targetTxIdx === -1) return;
+      const stmtSum = targetStmt.summary as StatementSummary;
+
+      const updatedTx = stmtSum.transactions.map((t, i) =>
+        i === targetTxIdx ? { ...t, [field]: value } : t
       );
 
       try {
         await updateDoc(
-          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
+          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', targetStmt.id),
           { 'summary.transactions': updatedTx }
         );
 
         if ((field === 'category' || field === 'subcategory') && value) {
-          const tx = updatedTx[txIdx];
+          const tx = updatedTx[targetTxIdx];
           const cat = tx.category;
           const sub = tx.subcategory ?? '';
           if (!cat) return;
@@ -443,7 +469,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         toast.error('Failed to update transaction');
       }
     },
-    [user?.uid, accountId, isOverall, currentStatement, categoryRules, extractKeyword]
+    [user?.uid, accountId, isOverall, currentStatement, summary, statements, categoryRules, extractKeyword]
   );
 
   const handleAcceptSuggestion = useCallback(async () => {
@@ -1038,49 +1064,33 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                 {t.matchedKeyword || '—'}
                               </td>
                               <td className="px-4 py-3">
-                                {!isOverall ? (
-                                  <input
-                                    type="text"
-                                    value={t.category}
-                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'category', e.target.value)}
-                                    className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                                  />
-                                ) : (
-                                  <Badge>{t.category}</Badge>
-                                )}
+                                <input
+                                  type="text"
+                                  value={t.category}
+                                  onChange={(e) => handleUpdateTransaction(originalIndex, 'category', e.target.value)}
+                                  className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                />
                               </td>
                               <td className="px-4 py-3">
-                                {!isOverall ? (
-                                  <input
-                                    type="text"
-                                    value={t.subcategory ?? ''}
-                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'subcategory', e.target.value)}
-                                    maxLength={100}
-                                    className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                                    placeholder="—"
-                                  />
-                                ) : (
-                                  <span className="text-text-secondary">{t.subcategory || '—'}</span>
-                                )}
+                                <input
+                                  type="text"
+                                  value={t.subcategory ?? ''}
+                                  onChange={(e) => handleUpdateTransaction(originalIndex, 'subcategory', e.target.value)}
+                                  maxLength={100}
+                                  className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                  placeholder="—"
+                                />
                               </td>
                               <td className="px-4 py-3">
-                                {!isOverall ? (
-                                  <select
-                                    value={t.disposition ?? ''}
-                                    onChange={(e) => handleUpdateTransaction(originalIndex, 'disposition', e.target.value)}
-                                    className="px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                                  >
-                                    <option value="">—</option>
-                                    <option value="Ok">Ok</option>
-                                    <option value="To Be Settled">To Be Settled</option>
-                                  </select>
-                                ) : (
-                                  t.disposition ? (
-                                    <Badge variant={t.disposition === 'Ok' ? 'success' : 'warning'}>
-                                      {t.disposition}
-                                    </Badge>
-                                  ) : '—'
-                                )}
+                                <select
+                                  value={t.disposition ?? ''}
+                                  onChange={(e) => handleUpdateTransaction(originalIndex, 'disposition', e.target.value)}
+                                  className="px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                                >
+                                  <option value="">—</option>
+                                  <option value="Ok">Ok</option>
+                                  <option value="To Be Settled">To Be Settled</option>
+                                </select>
                               </td>
                             </tr>
                           ))}
@@ -1092,21 +1102,36 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
                 {catSuggestion && (
                   <Card className="border-primary/30 bg-primary/5">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-text-primary">
-                          Add to Category Map?
-                        </p>
-                        <p className="text-xs text-text-secondary mt-1">
-                          Keyword <span className="font-semibold text-text-primary">&quot;{catSuggestion.keyword}&quot;</span> →
-                          Category <span className="font-semibold text-text-primary">&quot;{catSuggestion.category}&quot;</span>
-                          {catSuggestion.subcategory && (
-                            <>, Subcategory <span className="font-semibold text-text-primary">&quot;{catSuggestion.subcategory}&quot;</span></>
-                          )}
-                        </p>
-                        <p className="text-xs text-text-secondary mt-0.5">
-                          From: {catSuggestion.description}
-                        </p>
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-text-primary">Add to Category Map?</p>
+                      <p className="text-xs text-text-secondary">
+                        From: {catSuggestion.description}
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Keyword</label>
+                          <input
+                            value={catSuggestion.keyword}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, keyword: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Category</label>
+                          <input
+                            value={catSuggestion.category}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, category: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Subcategory</label>
+                          <input
+                            value={catSuggestion.subcategory}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, subcategory: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={handleAcceptAndApply}>
