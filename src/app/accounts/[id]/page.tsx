@@ -981,6 +981,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                             <th className="px-4 py-3 font-medium text-text-secondary text-right">
                               <ColumnFilterDropdown label="Amount" values={filterUniqueValues.type} selected={columnFilters.type} onChange={(v) => updateFilter('type', v)} align="right" />
                             </th>
+                            <th className="px-4 py-3 font-medium text-text-secondary text-right">Balance</th>
                             <th className="px-4 py-3 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Account Name" values={filterUniqueValues.accountName} selected={columnFilters.accountName} onChange={(v) => updateFilter('accountName', v)} />
                             </th>
@@ -1022,10 +1023,13 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                 </td>
                               )}
                               <td className="px-4 py-3 whitespace-nowrap">{t.date}</td>
-                              <td className="px-4 py-3">{t.description}</td>
+                              <td className="px-4 py-3 max-w-[200px] truncate" title={t.description}>{t.description}</td>
                               <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
                                 ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>
                                 {t.type === 'credit' ? '+' : '-'}{formatINR(t.amount)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-text-secondary whitespace-nowrap">
+                                {t.balance != null ? formatINR(t.balance) : '—'}
                               </td>
                               <td className="px-4 py-3 text-text-secondary text-xs">
                                 {account?.name || '—'}

@@ -174,6 +174,15 @@ function extractTransactionsFromText(text: string): ParsedStatement | null {
     if (amounts.length < 2) continue;
 
     const balance = amounts[amounts.length - 1];
+    const cleanDesc = block
+      .replace(dateMatch[0], '')
+      .replace(/₹\s*[\d,]+\.\d{2}/g, '')
+      .replace(/S\d{8,}/g, '')
+      .replace(/[-–]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 200);
+
     const prevBalance = transactions.length > 0
       ? transactions[transactions.length - 1].balance
       : null;
@@ -181,9 +190,9 @@ function extractTransactionsFromText(text: string): ParsedStatement | null {
     if (prevBalance !== null) {
       const diff = Math.round((balance - prevBalance) * 100) / 100;
       if (diff > 0) {
-        transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount: diff, type: 'credit', balance });
+        transactions.push({ date, description: cleanDesc, amount: diff, type: 'credit', balance });
       } else if (diff < 0) {
-        transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount: Math.abs(diff), type: 'debit', balance });
+        transactions.push({ date, description: cleanDesc, amount: Math.abs(diff), type: 'debit', balance });
       }
     } else {
       const amount = amounts[amounts.length - 2];
@@ -201,7 +210,7 @@ function extractTransactionsFromText(text: string): ParsedStatement | null {
       } else {
         type = amounts.length >= 3 ? 'debit' : 'credit';
       }
-      transactions.push({ date, description: block.replace(dateMatch[0], '').trim(), amount, type, balance });
+      transactions.push({ date, description: cleanDesc, amount, type, balance });
     }
   }
 
