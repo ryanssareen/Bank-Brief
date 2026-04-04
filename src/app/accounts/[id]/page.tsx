@@ -981,11 +981,11 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     )}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border text-left">
                             {!isOverall && (
-                              <th className="px-4 py-3">
+                              <th className="px-3 py-2">
                                 <input
                                   type="checkbox"
                                   checked={filteredTransactions.length > 0 && selectedTxIndices.size === filteredTransactions.length}
@@ -1000,27 +1000,27 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                 />
                               </th>
                             )}
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Date" values={filterUniqueValues.date} selected={columnFilters.date} onChange={(v) => updateFilter('date', v)} />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary text-right">
+                            <th className="px-3 py-2 font-medium text-text-secondary">Description</th>
+                            <th className="px-3 py-2 font-medium text-text-secondary text-right">
                               <ColumnFilterDropdown label="Amount" values={filterUniqueValues.type} selected={columnFilters.type} onChange={(v) => updateFilter('type', v)} align="right" />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary text-right">Balance</th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary text-right">Balance</th>
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Account Name" values={filterUniqueValues.accountName} selected={columnFilters.accountName} onChange={(v) => updateFilter('accountName', v)} />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Keyword" values={filterUniqueValues.keyword} selected={columnFilters.keyword} onChange={(v) => updateFilter('keyword', v)} />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Category" values={filterUniqueValues.category} selected={columnFilters.category} onChange={(v) => updateFilter('category', v)} />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Subcategory" values={filterUniqueValues.subcategory} selected={columnFilters.subcategory} onChange={(v) => updateFilter('subcategory', v)} />
                             </th>
-                            <th className="px-4 py-3 font-medium text-text-secondary">
+                            <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Disposition" values={filterUniqueValues.disposition} selected={columnFilters.disposition} onChange={(v) => updateFilter('disposition', v)} />
                             </th>
                           </tr>
@@ -1029,7 +1029,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           {filteredTransactions.map(({ t, originalIndex }) => (
                             <tr key={originalIndex} className={`border-b border-border hover:bg-bg-muted ${selectedTxIndices.has(originalIndex) ? 'bg-primary/5' : ''}`}>
                               {!isOverall && (
-                                <td className="px-4 py-3">
+                                <td className="px-3 py-2">
                                   <input
                                     type="checkbox"
                                     checked={selectedTxIndices.has(originalIndex)}
@@ -1048,22 +1048,22 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   />
                                 </td>
                               )}
-                              <td className="px-4 py-3 whitespace-nowrap">{t.date}</td>
-                              <td className="px-4 py-3 max-w-[200px] truncate" title={t.description}>{t.description}</td>
-                              <td className={`px-4 py-3 text-right font-medium whitespace-nowrap
+                              <td className="px-3 py-2 whitespace-nowrap">{t.date}</td>
+                              <td className="px-3 py-2 max-w-[250px] break-words">{t.description}</td>
+                              <td className={`px-3 py-2 text-right font-medium whitespace-nowrap
                                 ${t.type === 'credit' ? 'text-success' : 'text-danger'}`}>
                                 {t.type === 'credit' ? '+' : '-'}{formatINR(t.amount)}
                               </td>
-                              <td className="px-4 py-3 text-right text-text-secondary whitespace-nowrap">
+                              <td className="px-3 py-2 text-right text-text-secondary whitespace-nowrap">
                                 {t.balance != null ? formatINR(t.balance) : '—'}
                               </td>
-                              <td className="px-4 py-3 text-text-secondary text-xs">
+                              <td className="px-3 py-2 text-text-secondary text-xs">
                                 {account?.name || '—'}
                               </td>
-                              <td className="px-4 py-3 text-text-secondary text-xs">
+                              <td className="px-3 py-2 text-text-secondary text-xs">
                                 {t.matchedKeyword || '—'}
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-2">
                                 <input
                                   type="text"
                                   value={t.category}
@@ -1071,7 +1071,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   className="w-24 px-2 py-1 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
                                 />
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-2">
                                 <input
                                   type="text"
                                   value={t.subcategory ?? ''}
@@ -1081,7 +1081,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   placeholder="—"
                                 />
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-3 py-2">
                                 <select
                                   value={t.disposition ?? ''}
                                   onChange={(e) => handleUpdateTransaction(originalIndex, 'disposition', e.target.value)}
