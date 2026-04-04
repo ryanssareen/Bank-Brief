@@ -1186,11 +1186,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 )}
               </>
             ) : statements.length === 0 ? (
-              <Card className="text-center py-12">
-                <Upload className="h-12 w-12 mx-auto text-text-secondary mb-4" />
-                <p className="text-lg font-medium text-text-primary">No statements yet</p>
-                <p className="text-sm text-text-secondary mt-1">Upload a bank statement to get started</p>
-              </Card>
+              <FileUploader
+                accountId={accountId}
+                accountName={account?.name}
+                inline
+                onUploadComplete={handleUploadComplete}
+              />
             ) : (
               <Card className="text-center py-12">
                 <Spinner className="h-8 w-8 mx-auto text-primary mb-4" />

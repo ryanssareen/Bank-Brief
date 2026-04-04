@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const fileType = formData.get('fileType') as string | null;
+    const password = formData.get('password') as string | null;
 
     if (!file || !fileType) {
       return NextResponse.json(
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const result = await parseDocument(buffer, fileType);
+    const result = await parseDocument(buffer, fileType, password ?? undefined);
 
     return NextResponse.json({
       success: true,

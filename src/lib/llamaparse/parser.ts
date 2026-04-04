@@ -229,15 +229,26 @@ function extractTransactionsFromText(text: string): ParsedStatement | null {
 
 export async function parseDocument(
   buffer: Buffer,
-  fileType: string
+  fileType: string,
+  password?: string
 ): Promise<ParseResult> {
   if (fileType === 'pdf') {
     if (buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
       throw new Error('Invalid file: this doesn\'t appear to be a real PDF. Please re-export from the original app as PDF.');
     }
-    const result = await pdfParse(buffer);
-    const parsed = extractTransactionsFromText(result.text);
-    return { extractedText: result.text, parsed: parsed ?? undefined };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfInput: any = password ? { data: buffer, password } : buffer;
+    try {
+      const result = await pdfParse(pdfInput);
+      const parsed = extractTransactionsFromText(result.text);
+      return { extractedText: result.text, parsed: parsed ?? undefined };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('password') || msg.includes('encrypted')) {
+        throw new Error('PASSWORD_REQUIRED');
+      }
+      throw err;
+    }
   }
 
   if (fileType === 'csv') {
