@@ -191,14 +191,14 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions) continue;
         for (const t of sum.transactions) {
-          existingTxKeys.add(`${t.date}|${t.description}|${t.amount}`);
+          existingTxKeys.add(`${t.date}|${t.amount}|${t.type}`);
         }
       }
 
       const rawSummary = result.summary as { transactions?: { date: string; description: string; amount: number; type: string; category: string }[] } & Record<string, unknown>;
       const allTx = rawSummary.transactions ?? [];
       const uniqueTx = allTx.filter(
-        (t) => !existingTxKeys.has(`${t.date}|${t.description}|${t.amount}`)
+        (t) => !existingTxKeys.has(`${t.date}|${t.amount}|${t.type}`)
       );
 
       if (uniqueTx.length === 0) {
@@ -251,8 +251,11 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       const sum = s.summary as StatementSummary | undefined;
       if (!sum?.transactions) continue;
       for (const t of sum.transactions) {
-        const key = `${t.date}|${t.description}|${t.amount}`;
-        if (!txMap.has(key)) txMap.set(key, t);
+        const key = `${t.date}|${t.amount}|${t.type}`;
+        const existing = txMap.get(key);
+        if (!existing || (t.category && !existing.category) || (t.disposition && !existing.disposition)) {
+          txMap.set(key, t);
+        }
       }
     }
     const allTx = [...txMap.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -566,7 +569,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         .map((s) => {
           const txKeys = new Set(
             ((s.summary as StatementSummary).transactions ?? []).map(
-              (t) => `${t.date}|${t.description}|${t.amount}`
+              (t) => `${t.date}|${t.amount}|${t.type}`
             )
           );
           return { statement: s, txKeys };
@@ -589,10 +592,10 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
           const mergedTxMap = new Map<string, Transaction>();
           for (const t of (larger.statement.summary as StatementSummary).transactions) {
-            mergedTxMap.set(`${t.date}|${t.description}|${t.amount}`, t);
+            mergedTxMap.set(`${t.date}|${t.amount}|${t.type}`, t);
           }
           for (const t of (smaller.statement.summary as StatementSummary).transactions) {
-            const key = `${t.date}|${t.description}|${t.amount}`;
+            const key = `${t.date}|${t.amount}|${t.type}`;
             if (!mergedTxMap.has(key)) mergedTxMap.set(key, t);
           }
 
