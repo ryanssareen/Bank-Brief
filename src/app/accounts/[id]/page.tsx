@@ -682,7 +682,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Link href={`/accounts/${accountId}/category-map`}>
+                <Link href="/category-map">
                   <Button variant="secondary" size="md">
                     <ListFilter className="h-4 w-4" />
                     Category Map
