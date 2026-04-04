@@ -30,6 +30,7 @@ export function categorizeTransactions(
     description: t.description,
     amount: t.amount,
     type: t.type,
+    balance: t.balance,
     category: '',
     subcategory: '',
     disposition: '' as const,
@@ -77,6 +78,7 @@ Return a JSON object with EXACTLY this structure:
       "description": "string",
       "amount": number,
       "type": "credit" | "debit",
+      "balance": number,
       "category": "",
       "subcategory": ""
     }

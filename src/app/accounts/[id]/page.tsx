@@ -201,6 +201,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         (t) => !existingTxKeys.has(`${t.date}|${t.description}|${t.amount}`)
       );
 
+      if (uniqueTx.length === 0) {
+        toast('All transactions already loaded — skipped duplicate statement');
+        setShowUpload(false);
+        return;
+      }
+
       const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
       const totalDebits = uniqueTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
 
@@ -257,15 +263,25 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
     }
     const topCategories = [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount }));
-    const first = statements[statements.length - 1]?.summary as StatementSummary | undefined;
-    const last = statements[0]?.summary as StatementSummary | undefined;
+
+    let openingBalance = 0;
+    let closingBalance = 0;
+    if (allTx.length > 0) {
+      const firstTx = allTx[0];
+      openingBalance = firstTx.type === 'debit'
+        ? (firstTx.balance ?? 0) + firstTx.amount
+        : (firstTx.balance ?? 0) - firstTx.amount;
+      closingBalance = allTx[allTx.length - 1].balance ?? 0;
+    }
+
+    const lastStmt = statements[0]?.summary as StatementSummary | undefined;
     return {
       totalCredits,
       totalDebits,
-      openingBalance: first?.openingBalance ?? 0,
-      closingBalance: last?.closingBalance ?? 0,
+      openingBalance,
+      closingBalance,
       topCategories,
-      insights: last?.insights ?? [],
+      insights: lastStmt?.insights ?? [],
       transactions: allTx,
       generatedAt: new Date(),
     };
@@ -593,6 +609,15 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           const removeRef = doc(db, 'users', user.uid, 'accounts', accountId, 'statements', smaller.statement.id);
 
           const existingSummary = larger.statement.summary as StatementSummary;
+          let mergedOpening = existingSummary.openingBalance;
+          let mergedClosing = existingSummary.closingBalance;
+          if (mergedTx.length > 0) {
+            const firstTx = mergedTx[0];
+            mergedOpening = firstTx.type === 'debit'
+              ? (firstTx.balance ?? 0) + firstTx.amount
+              : (firstTx.balance ?? 0) - firstTx.amount;
+            mergedClosing = mergedTx[mergedTx.length - 1].balance ?? mergedClosing;
+          }
           await updateDoc(keepRef, {
             summary: {
               ...existingSummary,
@@ -600,6 +625,8 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               totalCredits,
               totalDebits,
               topCategories,
+              openingBalance: mergedOpening,
+              closingBalance: mergedClosing,
             },
           });
           await deleteDoc(removeRef);

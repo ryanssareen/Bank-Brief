@@ -51,6 +51,7 @@ export interface Transaction {
   description: string;
   amount: number;
   type: 'credit' | 'debit';
+  balance?: number;
   category: string;
   subcategory?: string;
   matchedKeyword?: string;
