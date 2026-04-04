@@ -16,6 +16,19 @@ export function CategoryPieChart({ categories }: CategoryPieChartProps) {
 
   if (data.length === 0) return null;
 
+  const total = data.reduce((s, d) => s + d.amount, 0);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderLabel = (props: any) => {
+    const { name, percent, x, y, textAnchor } = props;
+    if (percent < 0.05) return null;
+    return (
+      <text x={x} y={y} textAnchor={textAnchor} fill="#374151" fontSize={12}>
+        {name} ({(percent * 100).toFixed(0)}%)
+      </text>
+    );
+  };
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
@@ -25,14 +38,23 @@ export function CategoryPieChart({ categories }: CategoryPieChartProps) {
           nameKey="name"
           cx="50%"
           cy="50%"
-          outerRadius={100}
-          label={({ name }) => name}
+          outerRadius={90}
+          innerRadius={40}
+          label={renderLabel}
+          labelLine={false}
         >
           {data.map((_, i) => (
             <Cell key={i} fill={COLORS[i % COLORS.length]} />
           ))}
         </Pie>
-        <Tooltip formatter={(value) => formatINR(Number(value))} />
+        <Tooltip
+          formatter={(value) => formatINR(Number(value))}
+          labelFormatter={(name) => {
+            const item = data.find((d) => d.name === name);
+            const pct = item ? ((item.amount / total) * 100).toFixed(1) : '0';
+            return `${name} (${pct}%)`;
+          }}
+        />
         <Legend />
       </PieChart>
     </ResponsiveContainer>

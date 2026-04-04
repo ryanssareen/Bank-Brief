@@ -468,6 +468,8 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           if (!sum?.transactions?.length) continue;
 
           const updatedTx = sum.transactions.map((t) => {
+            if (t.disposition) return t;
+
             const descLower = t.description.toLowerCase();
             for (const rule of rules) {
               if (descLower.includes(rule.keyword.toLowerCase())) {
