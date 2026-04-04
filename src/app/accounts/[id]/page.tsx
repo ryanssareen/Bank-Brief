@@ -27,10 +27,11 @@ import { exportTransactionsCSV, exportSummaryCSV } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
-type FilterKey = 'date' | 'type' | 'accountName' | 'keyword' | 'category' | 'subcategory' | 'disposition';
+type FilterKey = 'date' | 'description' | 'type' | 'accountName' | 'keyword' | 'category' | 'subcategory' | 'disposition';
 
 const emptyFilters = (): Record<FilterKey, Set<string>> => ({
   date: new Set(),
+  description: new Set(),
   type: new Set(),
   accountName: new Set(),
   keyword: new Set(),
@@ -309,6 +310,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const getTxFilterValue = useCallback((t: Transaction, key: FilterKey): string => {
     switch (key) {
       case 'date': return t.date;
+      case 'description': return t.description;
       case 'type': return t.type;
       case 'accountName': return account?.name ?? '';
       case 'keyword': return t.matchedKeyword ?? '';
@@ -320,7 +322,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const filterUniqueValues = useMemo(() => {
     const txs = summary?.transactions ?? [];
-    const allKeys: FilterKey[] = ['date', 'type', 'accountName', 'keyword', 'category', 'subcategory', 'disposition'];
+    const allKeys: FilterKey[] = ['date', 'description', 'type', 'accountName', 'keyword', 'category', 'subcategory', 'disposition'];
     const result = {} as Record<FilterKey, string[]>;
 
     for (const key of allKeys) {
@@ -605,26 +607,59 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const handleBulkDisposition = useCallback(
     async (disposition: '' | 'Ok' | 'To Be Settled') => {
-      if (!user?.uid || isOverall || !currentStatement || selectedTxIndices.size === 0) return;
-      const sum = currentStatement.summary as StatementSummary | undefined;
-      if (!sum?.transactions) return;
-
-      const updatedTx = sum.transactions.map((t, i) =>
-        selectedTxIndices.has(i) ? { ...t, disposition } : t
-      );
+      if (!user?.uid || selectedTxIndices.size === 0) return;
+      const allTx = summary?.transactions;
+      if (!allTx) return;
 
       try {
-        await updateDoc(
-          doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
-          { 'summary.transactions': updatedTx }
-        );
+        if (!isOverall && currentStatement) {
+          const sum = currentStatement.summary as StatementSummary | undefined;
+          if (!sum?.transactions) return;
+          const updatedTx = sum.transactions.map((t, i) =>
+            selectedTxIndices.has(i) ? { ...t, disposition } : t
+          );
+          await updateDoc(
+            doc(db, 'users', user.uid, 'accounts', accountId, 'statements', currentStatement.id),
+            { 'summary.transactions': updatedTx }
+          );
+        } else {
+          const stmtUpdates = new Map<string, { stmt: Statement; txs: Transaction[] }>();
+          for (const idx of selectedTxIndices) {
+            const tx = allTx[idx];
+            if (!tx) continue;
+            const txKey = `${tx.date}|${tx.amount}|${tx.type}|${tx.balance ?? ''}`;
+            for (const s of statements) {
+              const sSum = s.summary as StatementSummary | undefined;
+              if (!sSum?.transactions) continue;
+              const found = sSum.transactions.findIndex((t) =>
+                `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}` === txKey
+              );
+              if (found !== -1) {
+                if (!stmtUpdates.has(s.id)) {
+                  stmtUpdates.set(s.id, { stmt: s, txs: [...sSum.transactions] });
+                }
+                const entry = stmtUpdates.get(s.id)!;
+                entry.txs[found] = { ...entry.txs[found], disposition };
+                break;
+              }
+            }
+          }
+          await Promise.all(
+            [...stmtUpdates.entries()].map(([id, { stmt, txs }]) =>
+              updateDoc(
+                doc(db, 'users', user.uid!, 'accounts', accountId, 'statements', id),
+                { 'summary.transactions': txs }
+              )
+            )
+          );
+        }
         toast.success(`Updated disposition for ${selectedTxIndices.size} transaction(s)`);
         setSelectedTxIndices(new Set());
       } catch {
         toast.error('Failed to update dispositions');
       }
     },
-    [user?.uid, accountId, isOverall, currentStatement, selectedTxIndices]
+    [user?.uid, accountId, isOverall, currentStatement, selectedTxIndices, summary?.transactions, statements]
   );
 
   const deduplicateStatements = useCallback(
@@ -901,6 +936,54 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               <>
                 <AccountSummary summary={summary} />
 
+                {catSuggestion && (
+                  <Card className="border-primary/30 bg-primary/5">
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-text-primary">Add to Category Map?</p>
+                      <p className="text-xs text-text-secondary">
+                        From: {catSuggestion.description}
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Keyword</label>
+                          <input
+                            value={catSuggestion.keyword}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, keyword: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Category</label>
+                          <input
+                            value={catSuggestion.category}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, category: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-text-secondary font-medium">Subcategory</label>
+                          <input
+                            value={catSuggestion.subcategory}
+                            onChange={(e) => setCatSuggestion({ ...catSuggestion, subcategory: e.target.value })}
+                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleAcceptAndApply}>
+                          Update &amp; Add Rule
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={handleAcceptSuggestion}>
+                          Add Rule
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setCatSuggestion(null)}>
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
                 <div className="flex gap-2 border-b border-border">
                   {(['overview', 'transactions', 'insights'] as const).map((tab) => (
                     <button
@@ -941,7 +1024,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
                 {activeTab === 'transactions' && (
                   <Card padding={false}>
-                    {!isOverall && selectedTxIndices.size > 0 && (
+                    {selectedTxIndices.size > 0 && (
                       <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b border-primary/20">
                         <span className="text-xs font-medium text-text-primary">
                           {selectedTxIndices.size} selected
@@ -984,8 +1067,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border text-left">
-                            {!isOverall && (
-                              <th className="px-3 py-2">
+                            <th className="px-3 py-2">
                                 <input
                                   type="checkbox"
                                   checked={filteredTransactions.length > 0 && selectedTxIndices.size === filteredTransactions.length}
@@ -999,11 +1081,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                   className="rounded border-border cursor-pointer"
                                 />
                               </th>
-                            )}
                             <th className="px-3 py-2 font-medium text-text-secondary">
                               <ColumnFilterDropdown label="Date" values={filterUniqueValues.date} selected={columnFilters.date} onChange={(v) => updateFilter('date', v)} />
                             </th>
-                            <th className="px-3 py-2 font-medium text-text-secondary">Description</th>
+                            <th className="px-3 py-2 font-medium text-text-secondary">
+                              <ColumnFilterDropdown label="Description" values={filterUniqueValues.description} selected={columnFilters.description} onChange={(v) => updateFilter('description', v)} />
+                            </th>
                             <th className="px-3 py-2 font-medium text-text-secondary text-right">
                               <ColumnFilterDropdown label="Amount" values={filterUniqueValues.type} selected={columnFilters.type} onChange={(v) => updateFilter('type', v)} align="right" />
                             </th>
@@ -1028,8 +1111,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                         <tbody>
                           {filteredTransactions.map(({ t, originalIndex }) => (
                             <tr key={originalIndex} className={`border-b border-border hover:bg-bg-muted ${selectedTxIndices.has(originalIndex) ? 'bg-primary/5' : ''}`}>
-                              {!isOverall && (
-                                <td className="px-3 py-2">
+                              <td className="px-3 py-2">
                                   <input
                                     type="checkbox"
                                     checked={selectedTxIndices.has(originalIndex)}
@@ -1047,7 +1129,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                                     className="rounded border-border cursor-pointer"
                                   />
                                 </td>
-                              )}
                               <td className="px-3 py-2 whitespace-nowrap">{t.date}</td>
                               <td className="px-3 py-2 max-w-[250px] break-words">{t.description}</td>
                               <td className={`px-3 py-2 text-right font-medium whitespace-nowrap
@@ -1096,54 +1177,6 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                           ))}
                         </tbody>
                       </table>
-                    </div>
-                  </Card>
-                )}
-
-                {catSuggestion && (
-                  <Card className="border-primary/30 bg-primary/5">
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-text-primary">Add to Category Map?</p>
-                      <p className="text-xs text-text-secondary">
-                        From: {catSuggestion.description}
-                      </p>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-[10px] text-text-secondary font-medium">Keyword</label>
-                          <input
-                            value={catSuggestion.keyword}
-                            onChange={(e) => setCatSuggestion({ ...catSuggestion, keyword: e.target.value })}
-                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-text-secondary font-medium">Category</label>
-                          <input
-                            value={catSuggestion.category}
-                            onChange={(e) => setCatSuggestion({ ...catSuggestion, category: e.target.value })}
-                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-text-secondary font-medium">Subcategory</label>
-                          <input
-                            value={catSuggestion.subcategory}
-                            onChange={(e) => setCatSuggestion({ ...catSuggestion, subcategory: e.target.value })}
-                            className="w-full mt-0.5 px-2 py-1.5 text-xs border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={handleAcceptAndApply}>
-                          Update &amp; Add Rule
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={handleAcceptSuggestion}>
-                          Add Rule
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setCatSuggestion(null)}>
-                          Dismiss
-                        </Button>
-                      </div>
                     </div>
                   </Card>
                 )}
