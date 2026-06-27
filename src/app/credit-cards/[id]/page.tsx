@@ -211,6 +211,11 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
       const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
       const totalDebits = uniqueTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
 
+      // Credit-card outstanding closing = opening + debits (spends) − credits (payments/refunds).
+      // Never trust the model's closing figure: derive it from the opening balance and totals.
+      const openingBalance = typeof rawSummary.openingBalance === 'number' ? rawSummary.openingBalance : 0;
+      const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+
       const catMap = new Map<string, number>();
       for (const t of uniqueTx) {
         if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
@@ -224,6 +229,8 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
         transactions: uniqueTx,
         totalCredits,
         totalDebits,
+        openingBalance,
+        closingBalance,
         topCategories,
       };
 
@@ -268,15 +275,18 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
     }
     const topCategories = [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name, amount }));
 
-    let openingBalance = 0;
-    let closingBalance = 0;
-    if (allTx.length > 0) {
-      const firstTx = allTx[0];
-      openingBalance = firstTx.type === 'debit'
-        ? (firstTx.balance ?? 0) + firstTx.amount
-        : (firstTx.balance ?? 0) - firstTx.amount;
-      closingBalance = allTx[allTx.length - 1].balance ?? 0;
-    }
+    // Credit-card outstanding: opening = stated opening of the earliest statement,
+    // closing = opening + total debits − total credits across the whole period.
+    const earliest = statements
+      .map((s) => s.summary as StatementSummary | undefined)
+      .filter((s): s is StatementSummary => !!s?.transactions?.length)
+      .sort((a, b) => {
+        const da = [...a.transactions].sort((x, y) => x.date.localeCompare(y.date))[0]?.date ?? '';
+        const db = [...b.transactions].sort((x, y) => x.date.localeCompare(y.date))[0]?.date ?? '';
+        return da.localeCompare(db);
+      })[0];
+    const openingBalance = earliest?.openingBalance ?? 0;
+    const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
 
     const lastStmt = statements[0]?.summary as StatementSummary | undefined;
     return {
