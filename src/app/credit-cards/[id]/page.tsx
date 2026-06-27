@@ -20,7 +20,7 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { exportSummaryCSV } from '@/utils/exportData';
@@ -546,6 +546,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
   }, [user?.uid, cardId, categoryRules, catSuggestion, statements]);
 
   const [applyingCategoryMap, setApplyingCategoryMap] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
   const [selectedTxIndices, setSelectedTxIndices] = useState<Set<number>>(new Set());
 
   const handleApplyCategoryMap = useCallback(
@@ -614,6 +615,39 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
       toast.error('Failed to delete credit card');
     }
   }, [user?.uid, cardId, statements, router]);
+
+  const handleRecomputeBalances = useCallback(async () => {
+    if (!user?.uid || statements.length === 0) return;
+    setRecomputing(true);
+    try {
+      let updated = 0;
+      await Promise.all(
+        statements.map((stmt) => {
+          const sum = stmt.summary as StatementSummary | undefined;
+          const txs = sum?.transactions;
+          if (!txs?.length) return Promise.resolve();
+          const totalCredits = txs.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+          const totalDebits = txs.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+          const openingBalance = sum?.openingBalance ?? 0;
+          const closingBalance = Math.round((openingBalance + totalDebits - totalCredits) * 100) / 100;
+          updated += 1;
+          return updateDoc(
+            doc(db, 'users', user.uid!, 'creditCards', cardId, 'statements', stmt.id),
+            {
+              'summary.totalCredits': Math.round(totalCredits * 100) / 100,
+              'summary.totalDebits': Math.round(totalDebits * 100) / 100,
+              'summary.closingBalance': closingBalance,
+            }
+          );
+        })
+      );
+      toast.success(`Recomputed balances for ${updated} statement(s)`);
+    } catch {
+      toast.error('Failed to recompute balances');
+    } finally {
+      setRecomputing(false);
+    }
+  }, [user?.uid, cardId, statements]);
 
   const handleBulkDisposition = useCallback(
     async (disposition: '' | 'Ok' | 'To Be Settled') => {
@@ -871,6 +905,22 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
                     Category Map
                   </Button>
                 </Link>
+                {statements.length > 0 && (
+                  <div className="relative group">
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={handleRecomputeBalances}
+                      loading={recomputing}
+                    >
+                      <Scale className="h-4 w-4" />
+                      Recompute Balances
+                    </Button>
+                    <div className="absolute top-full mt-1 left-0 w-64 p-2 bg-bg-card border border-border rounded-lg shadow-lg text-xs text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                      Recalculates closing balance = opening + debits − credits for each stored statement
+                    </div>
+                  </div>
+                )}
                 {summary && (
                   <div className="relative group">
                     <Button
