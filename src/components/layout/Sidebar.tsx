@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Wallet, PiggyBank, Settings, LogOut, Landmark, X, ListFilter } from 'lucide-react';
+import { LayoutDashboard, Wallet, CreditCard, PiggyBank, Settings, LogOut, Landmark, X, ListFilter } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ interface SidebarProps {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/accounts', label: 'Accounts', icon: Wallet },
+  { href: '/credit-cards', label: 'Credit Cards', icon: CreditCard },
   { href: '/category-map', label: 'Category Map', icon: ListFilter },
   { href: '/fixed-deposits', label: 'Fixed Deposits', icon: PiggyBank },
   { href: '/settings', label: 'Settings', icon: Settings },

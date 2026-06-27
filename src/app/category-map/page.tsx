@@ -21,7 +21,12 @@ export default function CategoryMapPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      setRules([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     const unsub = onSnapshot(
       doc(db, 'users', user.uid),
       (snap) => {
@@ -29,6 +34,10 @@ export default function CategoryMapPage() {
           const data = snap.data();
           setRules((data.categoryMap as CategoryRule[]) ?? []);
         }
+        setLoading(false);
+      },
+      (err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to load category map');
         setLoading(false);
       }
     );

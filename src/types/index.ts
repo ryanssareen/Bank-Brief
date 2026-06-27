@@ -16,6 +16,17 @@ export interface Account {
   updatedAt: Date;
 }
 
+export interface CreditCard {
+  id: string;
+  name: string;
+  bankName: string;
+  cardNumber?: string;
+  cardType: 'visa' | 'mastercard' | 'amex' | 'rupay' | 'other';
+  currency: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface CategoryRule {
   keyword: string;
   category: string;
