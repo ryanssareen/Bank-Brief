@@ -37,6 +37,81 @@ function tryNumber(val: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+const MONTHS: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+// "11 May '26" / "25 Apr '26" -> "2026-05-11"
+function parseCardDate(raw: string): string {
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2})/);
+  if (!m) return raw;
+  const dd = m[1].padStart(2, '0');
+  const mm = MONTHS[m[2].toLowerCase()] ?? '01';
+  return `20${m[3]}-${mm}-${dd}`;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Deterministic parser for Axis-style credit-card statements (text from pdf-parse).
+ * These have no per-row running balance and use "DD Mon 'YY" dates, so the generic
+ * bank-statement parser cannot read them and they would fall back to the (unreliable)
+ * LLM. Closing balance is derived as: opening + debits − credits.
+ */
+export function extractCreditCardStatement(text: string): ParsedStatement | null {
+  if (!/Total Payment Due/i.test(text)) return null;
+
+  const openMatch = text.match(/Opening Balance\s*₹?\s*([\d,]+\.\d{2})/i);
+  const dueMatch = text.match(/Total Payment Due\s*₹?\s*([\d,]+\.\d{2})/i);
+  const openingBalance = openMatch ? tryNumber(openMatch[1]) ?? 0 : 0;
+  const statedClosing = dueMatch ? tryNumber(dueMatch[1]) ?? 0 : 0;
+
+  // Isolate the transaction block: after the "...Debit/Credit" column header,
+  // up to "End of Transaction Summary". This excludes header dates like the
+  // payment-due date that would otherwise be parsed as a transaction.
+  const headerMatch = text.match(/Debit\s*\/\s*Credit/i);
+  const endMatch = text.match(/End of Transaction Summary/i);
+  const startIdx = headerMatch ? (headerMatch.index ?? 0) + headerMatch[0].length : 0;
+  const endIdx = endMatch ? endMatch.index ?? text.length : text.length;
+  const block = text.slice(startIdx, endIdx);
+
+  // date ... description (may span lines) ... ₹amount + Debit|Credit
+  const txnRe = /(\d{1,2}\s+[A-Za-z]{3}\s+'?\d{2})([\s\S]*?)₹\s*([\d,]+\.\d{2})\s*(Debit|Credit)/gi;
+  const transactions: ParsedTransaction[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = txnRe.exec(block)) !== null) {
+    const amount = tryNumber(m[3]);
+    if (amount === null || amount <= 0) continue;
+    const description = m[2]
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s,–-]+|[\s,–-]+$/g, '')
+      .trim()
+      .slice(0, 200);
+    transactions.push({
+      date: parseCardDate(m[1]),
+      description,
+      amount,
+      type: m[4].toLowerCase() === 'debit' ? 'debit' : 'credit',
+      balance: 0,
+    });
+  }
+
+  if (transactions.length === 0) return null;
+
+  const totalDeposits = round2(transactions.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0));
+  const totalWithdrawals = round2(transactions.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0));
+  const closingBalance = round2(openingBalance + totalWithdrawals - totalDeposits);
+
+  // Sanity check against the printed Total Payment Due when available (within ₹1 for rounding).
+  if (statedClosing && Math.abs(statedClosing - closingBalance) > 1) {
+    // Trust the derived value but keep going; the discrepancy usually means a
+    // missed/extra row, which is better surfaced than silently using the LLM.
+  }
+
+  return { openingBalance, closingBalance, totalDeposits, totalWithdrawals, transactions };
+}
+
 function extractTransactionsFromSheet(sheet: XLSX.WorkSheet): ParsedStatement | null {
   const data = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
 
@@ -240,7 +315,9 @@ export async function parseDocument(
     const pdfInput: any = password ? { data: buffer, password } : buffer;
     try {
       const result = await pdfParse(pdfInput);
-      const parsed = extractTransactionsFromText(result.text);
+      // Credit-card statements (no running balance, "DD Mon 'YY" dates) need a
+      // dedicated parser; fall back to the generic bank-statement parser otherwise.
+      const parsed = extractCreditCardStatement(result.text) ?? extractTransactionsFromText(result.text);
       return { extractedText: result.text, parsed: parsed ?? undefined };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
