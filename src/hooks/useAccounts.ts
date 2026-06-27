@@ -13,6 +13,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import toast from 'react-hot-toast';
 import type { Account } from '@/types';
 
 export function useAccounts(uid: string | undefined) {
@@ -31,16 +32,24 @@ export function useAccounts(uid: string | undefined) {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-        createdAt: d.data().createdAt?.toDate() ?? new Date(),
-        updatedAt: d.data().updatedAt?.toDate() ?? new Date(),
-      })) as Account[];
-      setAccounts(data);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+          createdAt: d.data().createdAt?.toDate() ?? new Date(),
+          updatedAt: d.data().updatedAt?.toDate() ?? new Date(),
+        })) as Account[];
+        setAccounts(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Failed to load accounts', err);
+        toast.error(err instanceof Error ? err.message : 'Failed to load accounts');
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [uid]);
