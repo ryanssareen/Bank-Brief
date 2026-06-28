@@ -444,13 +444,13 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
         targetStmt = currentStatement;
         targetTxIdx = txIdx;
       } else {
-        const txKey = `${txToUpdate.date}|${txToUpdate.amount}|${txToUpdate.type}|${txToUpdate.balance ?? ''}`;
+        // Overall view: summary.transactions hold the same object references as
+        // each statement's array, so match by identity — this targets the exact
+        // row even when two transactions share date/amount/type/description.
         for (const s of statements) {
           const sum = s.summary as StatementSummary | undefined;
           if (!sum?.transactions) continue;
-          const idx = sum.transactions.findIndex((t) =>
-            `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}` === txKey
-          );
+          const idx = sum.transactions.indexOf(txToUpdate);
           if (idx !== -1) {
             targetStmt = s;
             targetTxIdx = idx;
@@ -688,13 +688,11 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
           for (const idx of selectedTxIndices) {
             const tx = allTx[idx];
             if (!tx) continue;
-            const txKey = `${tx.date}|${tx.amount}|${tx.type}|${tx.balance ?? ''}`;
             for (const s of statements) {
               const sSum = s.summary as StatementSummary | undefined;
               if (!sSum?.transactions) continue;
-              const found = sSum.transactions.findIndex((t) =>
-                `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}` === txKey
-              );
+              // Match by object identity so identical-valued rows stay distinct.
+              const found = sSum.transactions.indexOf(tx);
               if (found !== -1) {
                 if (!stmtUpdates.has(s.id)) {
                   stmtUpdates.set(s.id, { stmt: s, txs: [...sSum.transactions] });
