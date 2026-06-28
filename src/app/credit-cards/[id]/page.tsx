@@ -40,6 +40,25 @@ const emptyFilters = (): Record<FilterKey, Set<string>> => ({
   disposition: new Set(),
 });
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Credit-card statements carry no running balance, so two rows with the same
+// date/amount/type (e.g. two identical ₹800 pharmacy charges in one day) are
+// genuinely distinct and must be preserved. Key each transaction by an
+// occurrence index so dedup keeps real duplicates yet still collapses an exact
+// re-upload of the same statement (where every row, in order, matches).
+function txKeyList(
+  txs: { date: string; amount: number; type: string; description: string }[]
+): string[] {
+  const seen = new Map<string, number>();
+  return txs.map((t) => {
+    const base = `${t.date}|${t.amount}|${t.type}|${t.description}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return `${base}#${n}`;
+  });
+}
+
 function ColumnFilterDropdown({
   label,
   values,
@@ -191,16 +210,13 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
       for (const s of statements) {
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions) continue;
-        for (const t of sum.transactions) {
-          existingTxKeys.add(`${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`);
-        }
+        for (const k of txKeyList(sum.transactions)) existingTxKeys.add(k);
       }
 
       const rawSummary = result.summary as { transactions?: { date: string; description: string; amount: number; type: string; category: string; balance?: number }[] } & Record<string, unknown>;
       const allTx = rawSummary.transactions ?? [];
-      const uniqueTx = allTx.filter(
-        (t) => !existingTxKeys.has(`${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`)
-      );
+      const newKeys = txKeyList(allTx);
+      const uniqueTx = allTx.filter((_, i) => !existingTxKeys.has(newKeys[i]));
 
       if (uniqueTx.length === 0) {
         toast('All transactions already loaded — skipped duplicate statement');
@@ -258,13 +274,14 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
     for (const s of statements) {
       const sum = s.summary as StatementSummary | undefined;
       if (!sum?.transactions) continue;
-      for (const t of sum.transactions) {
-        const key = `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`;
+      const keys = txKeyList(sum.transactions);
+      sum.transactions.forEach((t, i) => {
+        const key = keys[i];
         const existing = txMap.get(key);
         if (!existing || (t.category && !existing.category) || (t.disposition && !existing.disposition)) {
           txMap.set(key, t);
         }
-      }
+      });
     }
     const allTx = [...txMap.values()].sort((a, b) => a.date.localeCompare(b.date));
     const totalCredits = allTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
@@ -713,27 +730,22 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
       for (const s of statements) {
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions?.length) continue;
+        const keys = txKeyList(sum.transactions);
         const txMap = new Map<string, Transaction>();
-        for (const t of sum.transactions) {
-          const key = `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`;
+        sum.transactions.forEach((t, i) => {
+          const key = keys[i];
           const existing = txMap.get(key);
           if (!existing || (t.category && !existing.category) || (t.disposition && !existing.disposition)) {
             txMap.set(key, t);
           }
-        }
+        });
         if (txMap.size < sum.transactions.length) {
           const cleanTx = [...txMap.values()].sort((a, b) => a.date.localeCompare(b.date));
-          const totalCredits = cleanTx.filter((t) => t.type === 'credit').reduce((acc, t) => acc + t.amount, 0);
-          const totalDebits = cleanTx.filter((t) => t.type === 'debit').reduce((acc, t) => acc + t.amount, 0);
-          let openBal = sum.openingBalance;
-          let closeBal = sum.closingBalance;
-          if (cleanTx.length > 0 && cleanTx[0].balance != null) {
-            const firstTx = cleanTx[0];
-            openBal = firstTx.type === 'debit'
-              ? firstTx.balance! + firstTx.amount
-              : firstTx.balance! - firstTx.amount;
-            closeBal = cleanTx[cleanTx.length - 1].balance ?? closeBal;
-          }
+          const totalCredits = round2(cleanTx.filter((t) => t.type === 'credit').reduce((acc, t) => acc + t.amount, 0));
+          const totalDebits = round2(cleanTx.filter((t) => t.type === 'debit').reduce((acc, t) => acc + t.amount, 0));
+          // No running balance on card statements: closing = opening + debits − credits.
+          const openBal = sum.openingBalance;
+          const closeBal = round2(openBal + totalDebits - totalCredits);
           await updateDoc(
             doc(db, 'users', user.uid, 'creditCards', cardId, 'statements', s.id),
             {
@@ -753,9 +765,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
         .filter((s) => s.summary && (s.summary as StatementSummary).transactions?.length)
         .map((s) => {
           const txKeys = new Set(
-            ((s.summary as StatementSummary).transactions ?? []).map(
-              (t) => `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`
-            )
+            txKeyList((s.summary as StatementSummary).transactions ?? [])
           );
           return { statement: s, txKeys };
         });
@@ -776,17 +786,18 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
           if (overlapRatio < 0.8) continue;
 
           const mergedTxMap = new Map<string, Transaction>();
-          for (const t of (larger.statement.summary as StatementSummary).transactions) {
-            mergedTxMap.set(`${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`, t);
-          }
-          for (const t of (smaller.statement.summary as StatementSummary).transactions) {
-            const key = `${t.date}|${t.amount}|${t.type}|${t.balance ?? ''}`;
-            if (!mergedTxMap.has(key)) mergedTxMap.set(key, t);
-          }
+          const largerTxs = (larger.statement.summary as StatementSummary).transactions;
+          const largerKeys = txKeyList(largerTxs);
+          largerTxs.forEach((t, i) => mergedTxMap.set(largerKeys[i], t));
+          const smallerTxs = (smaller.statement.summary as StatementSummary).transactions;
+          const smallerKeys = txKeyList(smallerTxs);
+          smallerTxs.forEach((t, i) => {
+            if (!mergedTxMap.has(smallerKeys[i])) mergedTxMap.set(smallerKeys[i], t);
+          });
 
           const mergedTx = [...mergedTxMap.values()].sort((x, y) => x.date.localeCompare(y.date));
-          const totalCredits = mergedTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
-          const totalDebits = mergedTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+          const totalCredits = round2(mergedTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0));
+          const totalDebits = round2(mergedTx.filter((t) => t.type === 'debit').reduce((s, t) => s + t.amount, 0));
           const catMap = new Map<string, number>();
           for (const t of mergedTx) {
             if (t.type === 'debit') catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);
@@ -797,15 +808,8 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
           const removeRef = doc(db, 'users', user.uid, 'creditCards', cardId, 'statements', smaller.statement.id);
 
           const existingSummary = larger.statement.summary as StatementSummary;
-          let mergedOpening = existingSummary.openingBalance;
-          let mergedClosing = existingSummary.closingBalance;
-          if (mergedTx.length > 0) {
-            const firstTx = mergedTx[0];
-            mergedOpening = firstTx.type === 'debit'
-              ? (firstTx.balance ?? 0) + firstTx.amount
-              : (firstTx.balance ?? 0) - firstTx.amount;
-            mergedClosing = mergedTx[mergedTx.length - 1].balance ?? mergedClosing;
-          }
+          const mergedOpening = existingSummary.openingBalance;
+          const mergedClosing = round2(mergedOpening + totalDebits - totalCredits);
           await updateDoc(keepRef, {
             summary: {
               ...existingSummary,
