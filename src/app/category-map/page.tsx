@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { Plus, Trash2, Upload, ArrowUpToLine, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { exportCategoryMapXLSX, parseCSVLine } from '@/utils/exportData';
+import { exportCategoryMapXLSX, parseCategoryMapXLSX } from '@/utils/exportData';
 import type { CategoryRule } from '@/types';
 
 export default function CategoryMapPage() {
@@ -69,38 +69,21 @@ export default function CategoryMapPage() {
     );
   };
 
-  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      const parsed: CategoryRule[] = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const cols = parseCSVLine(lines[i]);
-        if (i === 0 && cols[0]?.toLowerCase() === 'keyword') continue;
-        if (cols.length >= 2 && cols[0]) {
-          parsed.push({
-            keyword: cols[0],
-            category: cols[1] || 'Other',
-            subcategory: cols[2] || '',
-          });
-        }
-      }
-
+    try {
+      const parsed = await parseCategoryMapXLSX(file);
       if (parsed.length === 0) {
-        toast.error('No valid rows found. Expected: keyword, category, subcategory');
+        toast.error('No valid rows found. Expected columns: keyword, category, subcategory');
         return;
       }
-
       setRules((prev) => [...prev, ...parsed]);
       toast.success(`Loaded ${parsed.length} rules`);
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+    } catch {
+      toast.error('Could not read that Excel file');
+    }
   };
 
   const handleExportExcel = async () => {
@@ -176,7 +159,7 @@ export default function CategoryMapPage() {
               <div className="flex gap-2">
                 <Button variant="secondary" size="md" onClick={() => fileRef.current?.click()}>
                   <Upload className="h-4 w-4" />
-                  Import CSV
+                  Import Excel
                 </Button>
                 {rules.length > 0 && (
                   <Button variant="secondary" size="md" onClick={handleExportExcel}>
@@ -196,8 +179,8 @@ export default function CategoryMapPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".csv"
-                  onChange={handleCSVUpload}
+                  accept=".xlsx,.xls"
+                  onChange={handleImportExcel}
                   className="hidden"
                 />
               </div>
@@ -258,9 +241,9 @@ export default function CategoryMapPage() {
 
                 {rules.length === 0 && (
                   <div className="text-center py-8 text-sm text-text-secondary">
-                    No rules yet. Add a row or import a CSV file.
+                    No rules yet. Add a row or import an Excel file.
                     <br />
-                    <span className="text-xs">CSV format: keyword, category, subcategory</span>
+                    <span className="text-xs">Excel columns: keyword, category, subcategory</span>
                   </div>
                 )}
               </div>

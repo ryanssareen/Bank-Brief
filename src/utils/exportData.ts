@@ -145,21 +145,22 @@ export async function exportCategoryMapXLSX(rules: CategoryRule[]) {
   XLSX.writeFile(wb, 'category-map.xlsx');
 }
 
-/** Split one CSV line into cells, honouring quoted cells that contain commas or escaped quotes. */
-export function parseCSVLine(line: string): string[] {
-  const cells: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-      else if (ch === '"') inQuotes = false;
-      else cur += ch;
-    } else if (ch === '"') inQuotes = true;
-    else if (ch === ',') { cells.push(cur.trim()); cur = ''; }
-    else cur += ch;
-  }
-  cells.push(cur.trim());
-  return cells;
+/**
+ * Read category rules from an Excel workbook in the layout exportCategoryMapXLSX writes
+ * (header row keyword/category/subcategory). Prefers the "Category Map" sheet, else the first one.
+ */
+export async function parseCategoryMapXLSX(file: File): Promise<CategoryRule[]> {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const sheet = wb.Sheets['Category Map'] ?? wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return [];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: false });
+  const cell = (v: unknown) => String(v ?? '').trim();
+  const rules: CategoryRule[] = [];
+  rows.forEach((row, i) => {
+    const [keyword, category, subcategory] = [cell(row[0]), cell(row[1]), cell(row[2])];
+    if (i === 0 && keyword.toLowerCase() === 'keyword') return;
+    if (keyword && category) rules.push({ keyword, category, subcategory });
+  });
+  return rules;
 }
