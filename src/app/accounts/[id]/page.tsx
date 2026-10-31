@@ -125,6 +125,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  // True while a batch started from the empty-state uploader is still unfinished. Saving the first file
+  // fills `statements`, which would otherwise unmount that uploader mid-batch and drop the rest of the queue.
+  const [inlineBatchActive, setInlineBatchActive] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
@@ -934,6 +937,21 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
+            {(statements.length === 0 || inlineBatchActive) && (
+              <div className={statements.length > 0 ? 'mb-6' : undefined}>
+                <FileUploader
+                  accountId={accountId}
+                  accountName={account?.name}
+                  inline
+                  onUploadComplete={(result) => {
+                    setInlineBatchActive(true);
+                    return handleUploadComplete(result);
+                  }}
+                  onAllComplete={() => setInlineBatchActive(false)}
+                />
+              </div>
+            )}
+
             {summary ? (
               <>
                 <AccountSummary summary={summary} />
@@ -1187,14 +1205,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   <InsightCard insights={summary.insights} />
                 )}
               </>
-            ) : statements.length === 0 ? (
-              <FileUploader
-                accountId={accountId}
-                accountName={account?.name}
-                inline
-                onUploadComplete={handleUploadComplete}
-              />
-            ) : (
+            ) : statements.length === 0 ? null : (
               <Card className="text-center py-12">
                 <Spinner className="h-8 w-8 mx-auto text-primary mb-4" />
                 <p className="text-text-secondary">Processing statement...</p>
