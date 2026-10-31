@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Trash2, Upload, Download, ArrowUpToLine, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, ArrowUpToLine, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { exportCategoryMapCSV, exportCategoryMapXLSX, parseCSVLine } from '@/utils/exportData';
 import type { CategoryRule } from '@/types';
 
 export default function CategoryMapPage() {
@@ -74,12 +75,12 @@ export default function CategoryMapPage() {
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const lines = text.split('\n').filter((l) => l.trim());
+      const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
       const parsed: CategoryRule[] = [];
 
       for (let i = 0; i < lines.length; i++) {
-        const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        const cols = parseCSVLine(lines[i]);
         if (i === 0 && cols[0]?.toLowerCase() === 'keyword') continue;
         if (cols.length >= 2 && cols[0]) {
           parsed.push({
@@ -104,20 +105,16 @@ export default function CategoryMapPage() {
 
   const handleExportCSV = () => {
     if (rules.length === 0) return;
-    const headers = 'keyword,category,subcategory';
-    const rows = rules.map((r) =>
-      `${r.keyword},${r.category},${r.subcategory ?? ''}`
-    );
-    const csv = [headers, ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'category-map.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    exportCategoryMapCSV(rules);
+  };
+
+  const handleExportExcel = async () => {
+    if (rules.length === 0) return;
+    try {
+      await exportCategoryMapXLSX(rules);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export Excel file');
+    }
   };
 
   const handleSave = useCallback(async () => {
@@ -190,6 +187,12 @@ export default function CategoryMapPage() {
                   <Button variant="secondary" size="md" onClick={handleExportCSV}>
                     <Download className="h-4 w-4" />
                     Export CSV
+                  </Button>
+                )}
+                {rules.length > 0 && (
+                  <Button variant="secondary" size="md" onClick={handleExportExcel}>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Export Excel
                   </Button>
                 )}
                 {rules.length > 0 && (

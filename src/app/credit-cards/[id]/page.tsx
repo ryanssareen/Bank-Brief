@@ -20,10 +20,10 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown, Scale } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown, FileSpreadsheet, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { exportSummaryCSV } from '@/utils/exportData';
+import { exportSummaryCSV, exportSummaryXLSX } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { CreditCard, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
@@ -952,6 +952,14 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
                     >
                       <Download className="h-4 w-4" />
                       Export CSV
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={() => exportSummaryXLSX(summary, card?.name ?? 'credit-card').catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to export Excel file'))}
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Export Excel
                     </Button>
                     <Button
                       variant="secondary"
