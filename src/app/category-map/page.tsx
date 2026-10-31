@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { AppShell } from '@/components/layout/AppShell';
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Trash2, Upload, ArrowUpToLine, RotateCcw, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowUpToLine, RotateCcw, FileSpreadsheet, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { exportCategoryMapXLSX, parseCSVLine } from '@/utils/exportData';
 import type { CategoryRule } from '@/types';
@@ -20,6 +20,7 @@ export default function CategoryMapPage() {
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -47,6 +48,14 @@ export default function CategoryMapPage() {
     );
     return unsub;
   }, [user?.uid]);
+
+  const searchTerms = useMemo(() => search.toLowerCase().split(/\s+/).filter(Boolean), [search]);
+  const isVisible = (r: CategoryRule) => {
+    if (searchTerms.length === 0) return true;
+    const hay = `${r.keyword} ${r.category} ${r.subcategory ?? ''}`.toLowerCase();
+    return searchTerms.every((t) => hay.includes(t));
+  };
+  const visibleCount = rules.filter(isVisible).length;
 
   const addRule = () => {
     setRules((prev) => [...prev, { keyword: '', category: '', subcategory: '' }]);
@@ -213,7 +222,28 @@ export default function CategoryMapPage() {
                   <span className="w-9" />
                 </div>
 
-                {rules.map((rule, idx) => (
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search keyword, category or subcategory..."
+                      className="w-full pl-9 pr-9 py-2 text-sm border border-border rounded-lg bg-bg-card text-text-primary focus:outline-none focus:border-primary"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer" aria-label="Clear search">
+                        <X className="h-4 w-4 text-text-secondary" />
+                      </button>
+                    )}
+                  </div>
+                  {searchTerms.length > 0 && (
+                    <span className="text-xs text-text-secondary">Showing {visibleCount} of {rules.length} rules</span>
+                  )}
+                </div>
+
+                {rules.map((rule, idx) => !isVisible(rule) ? null : (
                   <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-3 items-center">
                     <Input
                       placeholder="e.g. SWIGGY"
