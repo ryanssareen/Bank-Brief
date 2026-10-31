@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Trash2, Upload, Download, ArrowUpToLine, RotateCcw, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowUpToLine, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { exportCategoryMapCSV, exportCategoryMapXLSX, parseCSVLine } from '@/utils/exportData';
+import { exportCategoryMapXLSX, parseCSVLine } from '@/utils/exportData';
 import type { CategoryRule } from '@/types';
 
 export default function CategoryMapPage() {
@@ -103,11 +103,6 @@ export default function CategoryMapPage() {
     e.target.value = '';
   };
 
-  const handleExportCSV = () => {
-    if (rules.length === 0) return;
-    exportCategoryMapCSV(rules);
-  };
-
   const handleExportExcel = async () => {
     if (rules.length === 0) return;
     try {
@@ -183,12 +178,6 @@ export default function CategoryMapPage() {
                   <Upload className="h-4 w-4" />
                   Import CSV
                 </Button>
-                {rules.length > 0 && (
-                  <Button variant="secondary" size="md" onClick={handleExportCSV}>
-                    <Download className="h-4 w-4" />
-                    Export CSV
-                  </Button>
-                )}
                 {rules.length > 0 && (
                   <Button variant="secondary" size="md" onClick={handleExportExcel}>
                     <FileSpreadsheet className="h-4 w-4" />
@@ -285,7 +274,7 @@ export default function CategoryMapPage() {
           <p className="text-sm text-text-secondary">
             This permanently deletes all {rules.length} category{' '}
             {rules.length === 1 ? 'rule' : 'rules'}. It applies to every account and credit card,
-            and can&apos;t be undone. Consider exporting a CSV backup first.
+            and can&apos;t be undone. Consider exporting an Excel backup first.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={closeResetModal} disabled={resetting}>
