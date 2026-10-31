@@ -20,7 +20,7 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Trash2, RefreshCw, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Trash2, RefreshCw, ChevronDown, FileSpreadsheet, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { exportSummaryXLSX } from '@/utils/exportData';
@@ -129,6 +129,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
 
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'insights'>('overview');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [columnFilters, setColumnFilters] = useState<Record<FilterKey, Set<string>>>(emptyFilters);
   const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
   const [catSuggestion, setCatSuggestion] = useState<{
@@ -343,12 +344,19 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
     return result;
   }, [summary?.transactions, columnFilters, getTxFilterValue]);
 
+  const searchTerms = useMemo(() => searchQuery.toLowerCase().split(/\s+/).filter(Boolean), [searchQuery]);
+
   const filteredTransactions = useMemo(() => {
     const txs = summary?.transactions ?? [];
     const allKeys = Object.keys(columnFilters) as FilterKey[];
     return txs
       .map((t, originalIndex) => ({ t, originalIndex }))
       .filter(({ t }) => {
+        if (searchTerms.length > 0) {
+          const haystack = [t.date, t.description, t.matchedKeyword, t.category, t.subcategory, t.disposition, t.type, String(t.amount)]
+            .filter(Boolean).join(' ').toLowerCase();
+          if (!searchTerms.every((term) => haystack.includes(term))) return false;
+        }
         for (const key of allKeys) {
           const selected = columnFilters[key];
           if (selected.size === 0) continue;
@@ -356,7 +364,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
         }
         return true;
       });
-  }, [summary?.transactions, columnFilters, getTxFilterValue]);
+  }, [summary?.transactions, columnFilters, getTxFilterValue, searchTerms]);
 
   const updateFilter = useCallback((key: FilterKey, values: Set<string>) => {
     setColumnFilters((prev) => ({ ...prev, [key]: values }));
@@ -1052,13 +1060,30 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                         </button>
                       </div>
                     )}
+                    <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
+                      <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => { setSearchQuery(e.target.value); setSelectedTxIndices(new Set()); }}
+                          placeholder="Search description, keyword, category, amount..."
+                          className="w-full pl-8 pr-8 py-1.5 text-xs border border-border rounded-lg bg-bg-card text-text-primary focus:outline-none focus:border-primary"
+                        />
+                        {searchQuery && (
+                          <button onClick={() => { setSearchQuery(''); setSelectedTxIndices(new Set()); }} className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer" aria-label="Clear search">
+                            <X className="h-3.5 w-3.5 text-text-secondary" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     {filteredTransactions.length < (summary?.transactions?.length ?? 0) && (
                       <div className="flex items-center gap-2 px-4 py-2 bg-bg-muted border-b border-border">
                         <span className="text-xs text-text-secondary">
                           Showing {filteredTransactions.length} of {summary?.transactions?.length ?? 0} transactions
                         </span>
                         <button
-                          onClick={() => setColumnFilters(emptyFilters())}
+                          onClick={() => { setColumnFilters(emptyFilters()); setSearchQuery(''); }}
                           className="text-xs text-primary hover:underline cursor-pointer"
                         >
                           Clear filters
