@@ -8,8 +8,9 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
+import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Trash2, Upload, Download, ArrowUpToLine } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, ArrowUpToLine, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { CategoryRule } from '@/types';
 
@@ -18,6 +19,8 @@ export default function CategoryMapPage() {
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -140,6 +143,28 @@ export default function CategoryMapPage() {
     }
   }, [user?.uid, rules]);
 
+  const closeResetModal = useCallback(() => {
+    if (!resetting) setResetOpen(false);
+  }, [resetting]);
+
+  const handleResetAll = async () => {
+    if (!user?.uid) return;
+    setResetting(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        categoryMap: [],
+        updatedAt: serverTimestamp(),
+      });
+      setRules([]);
+      setResetOpen(false);
+      toast.success('All category rules cleared');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reset rules');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -165,6 +190,12 @@ export default function CategoryMapPage() {
                   <Button variant="secondary" size="md" onClick={handleExportCSV}>
                     <Download className="h-4 w-4" />
                     Export CSV
+                  </Button>
+                )}
+                {rules.length > 0 && (
+                  <Button variant="secondary" size="md" onClick={() => setResetOpen(true)}>
+                    <RotateCcw className="h-4 w-4" />
+                    Reset All
                   </Button>
                 )}
                 <Button size="md" onClick={handleSave} loading={saving}>
@@ -245,6 +276,25 @@ export default function CategoryMapPage() {
           </>
         )}
       </div>
+
+      <Modal open={resetOpen} onClose={closeResetModal} title="Reset all category rules?">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            This permanently deletes all {rules.length} category{' '}
+            {rules.length === 1 ? 'rule' : 'rules'}. It applies to every account and credit card,
+            and can&apos;t be undone. Consider exporting a CSV backup first.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeResetModal} disabled={resetting}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleResetAll} loading={resetting}>
+              <Trash2 className="h-4 w-4" />
+              Delete all rules
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </AppShell>
   );
 }
