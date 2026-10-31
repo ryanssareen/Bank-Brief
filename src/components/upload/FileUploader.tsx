@@ -2,35 +2,75 @@
 
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, X, Lock } from 'lucide-react';
+import { Upload, FileText, X, Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+
+export interface UploadResult {
+  fileName: string;
+  fileType: string;
+  extractedText: string;
+  summary: Record<string, unknown>;
+}
+
+/** 'saved' when the file became its own statement, 'duplicate' when every transaction was already loaded. */
+export type UploadOutcome = 'saved' | 'duplicate';
 
 interface FileUploaderProps {
   accountId: string;
   accountName?: string;
   inline?: boolean;
-  onUploadComplete: (result: {
-    fileName: string;
-    fileType: string;
-    extractedText: string;
-    summary: Record<string, unknown>;
-  }) => void;
+  /** Called once per file, in order. Each file is stored as its own statement. */
+  onUploadComplete: (result: UploadResult) => Promise<UploadOutcome | void> | UploadOutcome | void;
+  /** Called after a batch finishes with every file processed (none left needing a password or retry). */
+  onAllComplete?: () => void;
 }
 
-export function FileUploader({ accountId, accountName, inline, onUploadComplete }: FileUploaderProps) {
-  const [file, setFile] = useState<File | null>(null);
+type QueuedStatus = 'pending' | 'processing' | 'done' | 'duplicate' | 'password' | 'error';
+
+interface QueuedFile {
+  id: string;
+  file: File;
+  status: QueuedStatus;
+  password: string;
+  error?: string;
+}
+
+const MAX_FILES = 20;
+
+function fileTypeOf(file: File): 'pdf' | 'csv' | 'xlsx' {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return ext === 'pdf' ? 'pdf' : ext === 'csv' ? 'csv' : 'xlsx';
+}
+
+export function FileUploader({ accountId, accountName, inline, onUploadComplete, onAllComplete }: FileUploaderProps) {
+  const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [step, setStep] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [needsPassword, setNeedsPassword] = useState(false);
-  const [password, setPassword] = useState('');
+
+  const patch = (id: string, changes: Partial<QueuedFile>) =>
+    setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, ...changes } : q)));
 
   const onDrop = useCallback((accepted: File[]) => {
-    if (accepted.length > 0) {
-      setFile(accepted[0]);
-      setNeedsPassword(false);
-      setPassword('');
-    }
+    if (accepted.length === 0) return;
+    setQueue((prev) => {
+      // Drop finished entries and skip files already queued (same name, size and modified time).
+      const active = prev.filter((q) => q.status !== 'done' && q.status !== 'duplicate');
+      const seen = new Set(active.map((q) => `${q.file.name}|${q.file.size}|${q.file.lastModified}`));
+      const added: QueuedFile[] = [];
+      for (const file of accepted) {
+        const key = `${file.name}|${file.size}|${file.lastModified}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        added.push({ id: `${key}|${Math.random().toString(36).slice(2)}`, file, status: 'pending', password: '' });
+      }
+      const next = [...active, ...added];
+      if (next.length > MAX_FILES) {
+        toast.error(`You can upload up to ${MAX_FILES} files at a time`);
+        return next.slice(0, MAX_FILES);
+      }
+      return next;
+    });
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -42,39 +82,37 @@ export function FileUploader({ accountId, accountName, inline, onUploadComplete 
       'text/csv': ['.csv'],
     },
     maxSize: 10 * 1024 * 1024,
-    maxFiles: 1,
+    multiple: true,
+    disabled: uploading,
+    onDropRejected: (rejections) => {
+      for (const r of rejections) toast.error(`${r.file.name}: ${r.errors[0]?.message ?? 'not accepted'}`);
+    },
   });
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setUploading(true);
+  /** Parse, analyse and save one file. Returns its final status. */
+  const processFile = async (item: QueuedFile, label: string): Promise<QueuedStatus> => {
+    const fileType = fileTypeOf(item.file);
+    patch(item.id, { status: 'processing', error: undefined });
 
     try {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      const fileType = ext === 'pdf' ? 'pdf' : ext === 'csv' ? 'csv' : 'xlsx';
-
-      setStep('Parsing document...');
+      setStep(`${label}Parsing ${item.file.name}...`);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', item.file);
       formData.append('fileType', fileType);
-      if (password) formData.append('password', password);
+      if (item.password) formData.append('password', item.password);
 
       const parseRes = await fetch('/api/parse-document', { method: 'POST', body: formData });
       const parseJson = await parseRes.json();
 
       if (!parseJson.success) {
         if (parseJson.error === 'PASSWORD_REQUIRED') {
-          setNeedsPassword(true);
-          setUploading(false);
-          setStep('');
-          toast.error('This PDF is password-protected. Please enter the password.');
-          return;
+          patch(item.id, { status: 'password', error: item.password ? 'Incorrect password' : undefined });
+          return 'password';
         }
         throw new Error(parseJson.error ?? 'Parse failed');
       }
 
-      setNeedsPassword(false);
-      setStep('Analyzing with AI...');
+      setStep(`${label}Analyzing ${item.file.name} with AI...`);
       const analyzeRes = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,23 +126,64 @@ export function FileUploader({ accountId, accountName, inline, onUploadComplete 
       const analyzeJson = await analyzeRes.json();
       if (!analyzeJson.success) throw new Error(analyzeJson.error ?? 'Analysis failed');
 
-      onUploadComplete({
-        fileName: file.name,
+      const outcome = await onUploadComplete({
+        fileName: item.file.name,
         fileType,
         extractedText: parseJson.extractedText,
         summary: analyzeJson.summary,
       });
-
-      toast.success('Statement processed successfully');
-      setFile(null);
-      setPassword('');
+      const status: QueuedStatus = outcome === 'duplicate' ? 'duplicate' : 'done';
+      patch(item.id, { status });
+      return status;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
+      patch(item.id, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' });
+      return 'error';
+    }
+  };
+
+  const handleUpload = async () => {
+    // Pending and failed files are (re)tried; password-protected ones only once a password is entered.
+    const todo = queue.filter(
+      (q) => q.status === 'pending' || q.status === 'error' || (q.status === 'password' && q.password)
+    );
+    if (todo.length === 0) return;
+    setUploading(true);
+
+    const results: QueuedStatus[] = [];
+    try {
+      // One at a time, so each file is checked for duplicates against the ones saved before it.
+      for (let i = 0; i < todo.length; i++) {
+        const label = todo.length > 1 ? `(${i + 1}/${todo.length}) ` : '';
+        results.push(await processFile(todo[i], label));
+      }
     } finally {
       setUploading(false);
       setStep('');
     }
+
+    const saved = results.filter((r) => r === 'done').length;
+    const duplicates = results.filter((r) => r === 'duplicate').length;
+    const needPassword = results.filter((r) => r === 'password').length;
+    const failed = results.filter((r) => r === 'error').length;
+
+    if (saved > 0) toast.success(saved === 1 ? 'Statement processed successfully' : `${saved} statements processed — each saved as its own file`);
+    if (duplicates > 0) toast(`${duplicates} file(s) skipped — all transactions already loaded`);
+    if (needPassword > 0) toast.error(`${needPassword} file(s) are password-protected. Enter the password and upload again.`);
+    if (failed > 0) toast.error(`${failed} file(s) failed. See the list for details.`);
+
+    // Files left in the queue were never part of this batch only if they still need a password.
+    const untouchedWaiting = queue.some((q) => q.status === 'password' && !q.password && !todo.includes(q));
+    if (needPassword === 0 && failed === 0 && !untouchedWaiting) {
+      setQueue([]);
+      onAllComplete?.();
+    }
   };
+
+  const removeFile = (id: string) => setQueue((prev) => prev.filter((q) => q.id !== id));
+
+  const actionable = queue.filter(
+    (q) => q.status === 'pending' || q.status === 'error' || (q.status === 'password' && q.password)
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -120,52 +199,70 @@ export function FileUploader({ accountId, accountName, inline, onUploadComplete 
             <p className="text-lg font-medium text-text-primary">No statements yet</p>
             <p className="text-sm text-text-secondary mt-1">
               {isDragActive
-                ? 'Drop file here...'
-                : 'Drag & drop a bank statement here, or click to browse'}
-            </p>
-            <p className="text-xs text-text-secondary mt-1">
-              PDF, Excel, or CSV (max 10MB)
+                ? 'Drop files here...'
+                : 'Drag & drop one or more bank statements here, or click to browse'}
             </p>
           </>
         ) : (
-          <>
-            <p className="text-sm text-text-secondary">
-              {isDragActive
-                ? 'Drop file here...'
-                : 'Drag & drop a bank statement, or click to browse'}
-            </p>
-            <p className="text-xs text-text-secondary mt-1">
-              PDF, Excel, or CSV (max 10MB)
-            </p>
-          </>
+          <p className="text-sm text-text-secondary">
+            {isDragActive
+              ? 'Drop files here...'
+              : 'Drag & drop one or more statements, or click to browse'}
+          </p>
         )}
+        <p className="text-xs text-text-secondary mt-1">
+          PDF, Excel, or CSV (max 10MB each). Each file is kept as its own statement.
+        </p>
       </div>
 
-      {file && (
-        <div className="flex items-center gap-3 p-3 bg-bg-muted rounded-lg">
-          <FileText className="h-5 w-5 text-primary" />
-          <span className="flex-1 text-sm truncate">{file.name}</span>
-          <button
-            onClick={() => { setFile(null); setNeedsPassword(false); setPassword(''); }}
-            className="p-1 hover:bg-bg-hover rounded cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {needsPassword && (
-        <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg">
-          <Lock className="h-4 w-4 text-warning shrink-0" />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter PDF password"
-            className="flex-1 px-2 py-1.5 text-sm border border-border rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
-            onKeyDown={(e) => { if (e.key === 'Enter' && password) handleUpload(); }}
-          />
-        </div>
+      {queue.length > 0 && (
+        <ul className="space-y-2 max-h-72 overflow-y-auto">
+          {queue.map((q) => (
+            <li key={q.id} className="p-3 bg-bg-muted rounded-lg space-y-2">
+              <div className="flex items-center gap-3">
+                {q.status === 'processing' ? (
+                  <Loader2 className="h-5 w-5 text-primary animate-spin shrink-0" />
+                ) : q.status === 'done' || q.status === 'duplicate' ? (
+                  <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                ) : q.status === 'error' ? (
+                  <AlertCircle className="h-5 w-5 text-danger shrink-0" />
+                ) : q.status === 'password' ? (
+                  <Lock className="h-5 w-5 text-warning shrink-0" />
+                ) : (
+                  <FileText className="h-5 w-5 text-primary shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{q.file.name}</p>
+                  {q.status === 'duplicate' && (
+                    <p className="text-xs text-text-secondary">Skipped — all transactions already loaded</p>
+                  )}
+                  {q.status === 'done' && <p className="text-xs text-text-secondary">Saved</p>}
+                  {q.error && <p className="text-xs text-danger truncate">{q.error}</p>}
+                </div>
+                {!uploading && (
+                  <button
+                    onClick={() => removeFile(q.id)}
+                    className="p-1 hover:bg-bg-hover rounded cursor-pointer"
+                    title="Remove file"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {q.status === 'password' && (
+                <input
+                  type="password"
+                  value={q.password}
+                  onChange={(e) => patch(q.id, { password: e.target.value, error: undefined })}
+                  placeholder="Enter PDF password"
+                  disabled={uploading}
+                  className="w-full px-2 py-1.5 text-sm border border-warning/40 rounded bg-bg-card text-text-primary focus:outline-none focus:ring-1 focus:ring-primary-light"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && q.password) handleUpload(); }}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
       )}
 
       {uploading && step && (
@@ -175,10 +272,10 @@ export function FileUploader({ accountId, accountName, inline, onUploadComplete 
       <Button
         onClick={handleUpload}
         loading={uploading}
-        disabled={!file || (needsPassword && !password)}
+        disabled={actionable === 0}
         className="w-full"
       >
-        Upload & Analyze
+        {actionable > 1 ? `Upload & Analyze ${actionable} files` : 'Upload & Analyze'}
       </Button>
     </div>
   );

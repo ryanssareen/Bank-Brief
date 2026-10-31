@@ -2,16 +2,6 @@ import type { Transaction, StatementSummary, CategoryRule } from '@/types';
 
 type Cell = string | number;
 
-/** Quote a CSV cell when it contains a comma, quote, or newline so rows never split. */
-function csvCell(value: Cell | undefined | null): string {
-  const s = value === undefined || value === null ? '' : String(value);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function toCSV(rows: Cell[][]): string {
-  return rows.map((r) => r.map(csvCell).join(',')).join('\n');
-}
-
 const TX_HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Subcategory', 'Disposition', 'Balance'];
 
 function transactionRows(transactions: Transaction[]): Cell[][] {
@@ -73,31 +63,17 @@ function safeName(name: string): string {
   return name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'export';
 }
 
-export function exportTransactionsCSV(transactions: Transaction[], accountName: string) {
-  const csv = toCSV([TX_HEADERS, ...transactionRows(transactions)]);
-  downloadFile(csv, `${safeName(accountName)}-transactions.csv`, 'text/csv');
+export interface StatementFileSummary {
+  fileName: string;
+  summary?: StatementSummary;
 }
 
-export function exportSummaryCSV(summary: StatementSummary, accountName: string) {
-  const transactions = summary.transactions ?? [];
-  const rows: Cell[][] = [
-    ['Metric', 'Value'],
-    ...metricRows(summary),
-    [],
-    ['Category', 'Debits', 'Credits', 'Transactions'],
-    ...categoryTotals(transactions, false).map((c) => [c.category, c.debits, c.credits, c.count]),
-    [],
-    ['Insights'],
-    ...(summary.insights ?? []).map((i) => [i]),
-    [],
-    TX_HEADERS,
-    ...transactionRows(transactions),
-  ];
-  downloadFile(toCSV(rows), `${safeName(accountName)}-summary.csv`, 'text/csv');
-}
-
-/** Excel workbook with one sheet each for summary, categories, subcategories, every transaction and insights. */
-export async function exportSummaryXLSX(summary: StatementSummary, accountName: string) {
+/**
+ * Excel workbook with one sheet each for summary, categories, subcategories, every transaction and insights.
+ * When `files` is given (the combined view of several statements), a "By File" sheet breaks the totals
+ * down per uploaded statement so each file's figures stay visible alongside the combined ones.
+ */
+export async function exportSummaryXLSX(summary: StatementSummary, accountName: string, files?: StatementFileSummary[]) {
   const XLSX = await import('xlsx');
   const transactions = summary.transactions ?? [];
   const wb = XLSX.utils.book_new();
@@ -105,6 +81,26 @@ export async function exportSummaryXLSX(summary: StatementSummary, accountName: 
   const summarySheet = XLSX.utils.aoa_to_sheet([['Metric', 'Value'], ...metricRows(summary)]);
   summarySheet['!cols'] = [{ wch: 18 }, { wch: 16 }];
   XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+  if (files && files.length > 0) {
+    const fileSheet = XLSX.utils.aoa_to_sheet([
+      ['File', 'Opening Balance', 'Closing Balance', 'Total Credits', 'Total Debits', 'Net Change', 'Transactions'],
+      ...files.map((f) => {
+        const s = f.summary;
+        return [
+          f.fileName,
+          s?.openingBalance ?? 0,
+          s?.closingBalance ?? 0,
+          s?.totalCredits ?? 0,
+          s?.totalDebits ?? 0,
+          (s?.totalCredits ?? 0) - (s?.totalDebits ?? 0),
+          s?.transactions?.length ?? 0,
+        ];
+      }),
+    ]);
+    fileSheet['!cols'] = [{ wch: 40 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 13 }];
+    XLSX.utils.book_append_sheet(wb, fileSheet, 'By File');
+  }
 
   const catSheet = XLSX.utils.aoa_to_sheet([
     ['Category', 'Debits', 'Credits', 'Transactions'],
@@ -140,10 +136,6 @@ function ruleRows(rules: CategoryRule[]): Cell[][] {
   return rules.map((r) => [r.keyword ?? '', r.category ?? '', r.subcategory ?? '']);
 }
 
-export function exportCategoryMapCSV(rules: CategoryRule[]) {
-  downloadFile(toCSV([RULE_HEADERS, ...ruleRows(rules)]), 'category-map.csv', 'text/csv');
-}
-
 export async function exportCategoryMapXLSX(rules: CategoryRule[]) {
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
@@ -151,19 +143,6 @@ export async function exportCategoryMapXLSX(rules: CategoryRule[]) {
   sheet['!cols'] = [{ wch: 30 }, { wch: 24 }, { wch: 24 }];
   XLSX.utils.book_append_sheet(wb, sheet, 'Category Map');
   XLSX.writeFile(wb, 'category-map.xlsx');
-}
-
-function downloadFile(content: string, filename: string, type: string) {
-  // BOM so Excel opens UTF-8 CSVs (₹, non-Latin descriptions) correctly.
-  const blob = new Blob(['﻿', content], { type: `${type};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /** Split one CSV line into cells, honouring quoted cells that contain commas or escaped quotes. */

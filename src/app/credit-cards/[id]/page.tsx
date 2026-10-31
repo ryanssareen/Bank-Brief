@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal';
 import { AccountSummary } from '@/components/accounts/AccountSummary';
 import { EditCreditCardModal } from '@/components/credit-cards/EditCreditCardModal';
 
-import { FileUploader } from '@/components/upload/FileUploader';
+import { FileUploader, type UploadResult, type UploadOutcome } from '@/components/upload/FileUploader';
 import { SpendingBarChart } from '@/components/charts/SpendingBarChart';
 import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
@@ -20,10 +20,10 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown, FileSpreadsheet, Scale } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Trash2, RefreshCw, ChevronDown, FileSpreadsheet, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { exportSummaryCSV, exportSummaryXLSX } from '@/utils/exportData';
+import { exportSummaryXLSX } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { CreditCard, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
@@ -138,6 +138,9 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
   const router = useRouter();
   const [card, setCard] = useState<CreditCard | null>(null);
   const [statements, setStatements] = useState<Statement[]>([]);
+  // Latest statements for upload de-duplication: a multi-file upload calls the handler several times
+  // from one render, so reading `statements` from the closure would miss files saved earlier in the batch.
+  const statementsRef = useRef<Statement[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
@@ -190,6 +193,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
             ? { ...d.data().summary, generatedAt: d.data().summary.generatedAt?.toDate() ?? new Date() }
             : undefined,
         })) as Statement[];
+        statementsRef.current = data;
         setStatements(data);
         setLoading(false);
       }
@@ -203,11 +207,11 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
   }, [user?.uid, cardId]);
 
   const handleUploadComplete = useCallback(
-    async (result: { fileName: string; fileType: string; extractedText: string; summary: Record<string, unknown> }) => {
+    async (result: UploadResult): Promise<UploadOutcome | void> => {
       if (!user?.uid) return;
 
       const existingTxKeys = new Set<string>();
-      for (const s of statements) {
+      for (const s of statementsRef.current) {
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions) continue;
         for (const k of txKeyList(sum.transactions)) existingTxKeys.add(k);
@@ -219,9 +223,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
       const uniqueTx = allTx.filter((_, i) => !existingTxKeys.has(newKeys[i]));
 
       if (uniqueTx.length === 0) {
-        toast('All transactions already loaded — skipped duplicate statement');
-        setShowUpload(false);
-        return;
+        return 'duplicate';
       }
 
       const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
@@ -263,9 +265,9 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
           summary: { ...deduped, generatedAt: serverTimestamp() },
         }
       );
-      setShowUpload(false);
+      return 'saved';
     },
-    [user?.uid, cardId, statements]
+    [user?.uid, cardId]
   );
 
   const overallSummary = useMemo<StatementSummary | undefined>(() => {
@@ -948,15 +950,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
                     <Button
                       variant="secondary"
                       size="md"
-                      onClick={() => exportSummaryCSV(summary, card?.name ?? 'credit-card')}
-                    >
-                      <Download className="h-4 w-4" />
-                      Export CSV
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      onClick={() => exportSummaryXLSX(summary, card?.name ?? 'credit-card').catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to export Excel file'))}
+                      onClick={() => exportSummaryXLSX(summary, card?.name ?? 'credit-card', isOverall ? statements.map((s) => ({ fileName: s.fileName, summary: s.summary })) : undefined).catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to export Excel file'))}
                     >
                       <FileSpreadsheet className="h-4 w-4" />
                       Export Excel
@@ -984,7 +978,7 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
                   className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
                 >
                   {statements.length > 1 && (
-                    <option value={-1}>Overall (all statements merged)</option>
+                    <option value={-1}>Overall (all {statements.length} files combined)</option>
                   )}
                   {statements.map((s, i) => (
                     <option key={s.id} value={i}>{s.fileName}</option>
@@ -1269,11 +1263,12 @@ export default function CreditCardDetailPage({ params }: { params: Promise<{ id:
               </Card>
             )}
 
-            <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Upload Statement">
+            <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Upload Statements">
               <FileUploader
                 accountId={cardId}
                 accountName={card?.name}
                 onUploadComplete={handleUploadComplete}
+                onAllComplete={() => setShowUpload(false)}
               />
             </Modal>
 

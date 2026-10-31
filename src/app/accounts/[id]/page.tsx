@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal';
 import { AccountSummary } from '@/components/accounts/AccountSummary';
 import { EditAccountModal } from '@/components/accounts/EditAccountModal';
 
-import { FileUploader } from '@/components/upload/FileUploader';
+import { FileUploader, type UploadResult, type UploadOutcome } from '@/components/upload/FileUploader';
 import { SpendingBarChart } from '@/components/charts/SpendingBarChart';
 import { CategoryPieChart } from '@/components/charts/CategoryPieChart';
 import { TrendLineChart } from '@/components/charts/TrendLineChart';
@@ -20,10 +20,10 @@ import { MonthlyComparisonChart } from '@/components/charts/MonthlyComparisonCha
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR } from '@/utils/formatCurrency';
-import { Upload, Mail, Pencil, ListFilter, Layers, Download, Trash2, RefreshCw, ChevronDown, FileSpreadsheet } from 'lucide-react';
+import { Upload, Mail, Pencil, ListFilter, Layers, Trash2, RefreshCw, ChevronDown, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { exportTransactionsCSV, exportSummaryCSV, exportSummaryXLSX } from '@/utils/exportData';
+import { exportSummaryXLSX } from '@/utils/exportData';
 import toast from 'react-hot-toast';
 import type { Account, Statement, StatementSummary, Transaction, CategoryRule } from '@/types';
 
@@ -119,6 +119,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [statements, setStatements] = useState<Statement[]>([]);
+  // Latest statements for upload de-duplication: a multi-file upload calls the handler several times
+  // from one render, so reading `statements` from the closure would miss files saved earlier in the batch.
+  const statementsRef = useRef<Statement[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
@@ -171,6 +174,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
             ? { ...d.data().summary, generatedAt: d.data().summary.generatedAt?.toDate() ?? new Date() }
             : undefined,
         })) as Statement[];
+        statementsRef.current = data;
         setStatements(data);
         setLoading(false);
       }
@@ -184,11 +188,11 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
   }, [user?.uid, accountId]);
 
   const handleUploadComplete = useCallback(
-    async (result: { fileName: string; fileType: string; extractedText: string; summary: Record<string, unknown> }) => {
+    async (result: UploadResult): Promise<UploadOutcome | void> => {
       if (!user?.uid) return;
 
       const existingTxKeys = new Set<string>();
-      for (const s of statements) {
+      for (const s of statementsRef.current) {
         const sum = s.summary as StatementSummary | undefined;
         if (!sum?.transactions) continue;
         for (const t of sum.transactions) {
@@ -203,9 +207,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
       );
 
       if (uniqueTx.length === 0) {
-        toast('All transactions already loaded — skipped duplicate statement');
-        setShowUpload(false);
-        return;
+        return 'duplicate';
       }
 
       const totalCredits = uniqueTx.filter((t) => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
@@ -240,9 +242,9 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
           summary: { ...deduped, generatedAt: serverTimestamp() },
         }
       );
-      setShowUpload(false);
+      return 'saved';
     },
-    [user?.uid, accountId, statements]
+    [user?.uid, accountId]
   );
 
   const overallSummary = useMemo<StatementSummary | undefined>(() => {
@@ -886,15 +888,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                     <Button
                       variant="secondary"
                       size="md"
-                      onClick={() => exportSummaryCSV(summary, account?.name ?? 'account')}
-                    >
-                      <Download className="h-4 w-4" />
-                      Export CSV
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      onClick={() => exportSummaryXLSX(summary, account?.name ?? 'account').catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to export Excel file'))}
+                      onClick={() => exportSummaryXLSX(summary, account?.name ?? 'account', isOverall ? statements.map((s) => ({ fileName: s.fileName, summary: s.summary })) : undefined).catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to export Excel file'))}
                     >
                       <FileSpreadsheet className="h-4 w-4" />
                       Export Excel
@@ -922,7 +916,7 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
                   className="border border-border rounded-lg px-3 py-2 text-sm bg-bg-card text-text-primary"
                 >
                   {statements.length > 1 && (
-                    <option value={-1}>Overall (all statements merged)</option>
+                    <option value={-1}>Overall (all {statements.length} files combined)</option>
                   )}
                   {statements.map((s, i) => (
                     <option key={s.id} value={i}>{s.fileName}</option>
@@ -1207,11 +1201,12 @@ export default function AccountDetailPage({ params }: { params: Promise<{ id: st
               </Card>
             )}
 
-            <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Upload Statement">
+            <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Upload Statements">
               <FileUploader
                 accountId={accountId}
                 accountName={account?.name}
                 onUploadComplete={handleUploadComplete}
+                onAllComplete={() => setShowUpload(false)}
               />
             </Modal>
 
